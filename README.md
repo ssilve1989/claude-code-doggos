@@ -133,3 +133,7 @@ python3 art/build.py      # redraw sprites -> hooks/sprites.ts and art/preview.p
 `hooks/register.tsx` wires them to Claude Code's events. `hooks/sprites.ts` is
 generated, so edit `art/build.py` instead. Design notes are in
 `docs/superpowers/specs/`.
+
+## License
+
+MIT. See [LICENSE.md](LICENSE.md).
