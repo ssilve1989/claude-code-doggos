@@ -1,0 +1,13 @@
+{
+  "name": "doggos",
+  "description": "A pixel-art golden retriever buddy for Claude Code",
+  "owner": {
+    "name": "Steve Silvestri"
+  },
+  "plugins": [
+    {
+      "name": "doggo",
+      "source": "./"
+    }
+  ]
+}
