@@ -93,6 +93,14 @@ Options, settable in `/config` (look for the `doggo` rows), or with
 | `barkAfterSeconds` | turns at least this long send a notification | `60` |
 | `breakAfterMinutes` | work streak before the break reminder | `90` |
 | `spinner` | swap Claude's spinner word for the dog's | `true` |
+| `recap` | after a turn of 30s or more, a one-line recap in dog voice from Haiku | `false` |
+| `barks` | bark sounds on long turns, fetch and treats (macOS) | `false` |
+| `barkVolume` | 0 to 1 | `0.6` |
+
+`recap` makes one small Haiku call per long turn on your plan, with the list of
+files and commands from that turn and the start of Claude's answer. The barks
+are synthesized by `art/build.py` (`sounds/*.wav`); swap in your own clips with
+the same names if you'd like a real dog.
 
 Changes made with `/doggo band|pane|off` or `/doggo name <name>` are saved
 and take precedence over these options from then on.
@@ -191,7 +199,8 @@ pnpm install              # dev tooling only: commit hooks (the mod needs no ins
 claude plugin test        # unit + integration tests, no session needed
 claude plugin validate .  # what Claude Code reads from the mod
 tsc -p .                  # type-check (types land in .claude-plugin/types/ once the mod has loaded)
-python3 art/build.py      # redraw sprites -> hooks/sprites.ts and art/preview.png
+python3 art/build.py      # redraw sprites -> hooks/sprites.ts and art/preview.png; resynthesize sounds/
+python3 art/build.py --sound-preview   # also plot the barks to art/sounds.png
 ```
 
 `hooks/mood.ts`, `hooks/bond.ts` and `hooks/raster.ts` are pure logic;

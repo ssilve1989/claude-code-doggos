@@ -4,7 +4,11 @@ Run: python3 art/build.py   (needs Pillow)
 Each sprite is a grid of palette indices; 0 is transparent.
 """
 import json
+import math
+import random
+import struct
 import sys
+import wave
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -579,6 +583,76 @@ def preview(sets, path, scale=6):
     sheet.save(path)
 
 
+# -------------------------------------------------------------------- sounds
+
+RATE = 22050
+
+
+def bark_samples(f_start, f_peak, f_end, dur, noise, gain):
+    """One bark: a pitch that jumps up then falls, rich in harmonics, with a breathy noise layer."""
+    rng = random.Random(f_start)  # deterministic: the same build makes the same sound
+    n = int(dur * RATE)
+    out, phase, smooth = [], 0.0, 0.0
+    for i in range(n):
+        t = i / n
+        f = f_start + (f_peak - f_start) * min(1, t / 0.15) if t < 0.15 else f_peak + (f_end - f_peak) * ((t - 0.15) / 0.85)
+        phase += 2 * math.pi * f / RATE
+        # harmonics weighted towards 2-4x: the "throaty" middle of a woof
+        tone = sum(w * math.sin(k * phase) for k, w in ((1, 0.6), (2, 1.0), (3, 0.8), (4, 0.5), (5, 0.25), (6, 0.12)))
+        smooth = 0.6 * smooth + 0.4 * (rng.random() * 2 - 1)  # gently low-passed noise
+        env = min(1, i / (0.008 * RATE)) * math.exp(-4.5 * max(0, t - 0.25))
+        out.append(gain * env * (tone / 3.3 + noise * smooth))
+    return out
+
+
+def silence(seconds):
+    return [0.0] * int(seconds * RATE)
+
+
+def write_wav(path, samples):
+    peak = max(1e-9, max(abs(x) for x in samples))
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(RATE)
+        w.writeframes(b"".join(struct.pack("<h", int(32000 * x / peak * 0.9)) for x in samples))
+
+
+def sound_preview(clips, path):
+    """Waveform over a coarse spectrogram for each clip, since the build can't listen."""
+    width, wave_h, spec_h, win = 600, 80, 120, 512
+    sheet = Image.new("RGB", (width, len(clips) * (wave_h + spec_h + 10)), (20, 20, 26))
+    d = ImageDraw.Draw(sheet)
+    for row, (name, smp) in enumerate(clips):
+        top = row * (wave_h + spec_h + 10)
+        peak = max(abs(x) for x in smp) or 1
+        for x in range(width):
+            chunk = smp[int(x * len(smp) / width):int((x + 1) * len(smp) / width)] or [0]
+            a = max(abs(v) for v in chunk) / peak
+            d.line((x, top + wave_h / 2 - a * wave_h / 2, x, top + wave_h / 2 + a * wave_h / 2), fill=(232, 172, 76))
+        d.text((4, top + 2), name, fill=(255, 255, 255))
+        cols = 120
+        for c in range(cols):
+            start = int(c * (len(smp) - win) / cols)
+            frame = smp[start:start + win]
+            for b in range(0, 64):  # 0 to ~2.75 kHz in 43 Hz bins
+                re = sum(v * math.cos(2 * math.pi * b * k / win) for k, v in enumerate(frame))
+                im = sum(v * math.sin(2 * math.pi * b * k / win) for k, v in enumerate(frame))
+                mag = min(1.0, math.sqrt(re * re + im * im) / (win * 0.15))
+                y = top + wave_h + spec_h - (b + 1) * spec_h // 64
+                d.rectangle((c * width // cols, y, (c + 1) * width // cols, y + spec_h // 64), fill=(int(255 * mag), int(160 * mag), int(60 * mag)))
+    sheet.save(path)
+
+
+def build_sounds():
+    one = bark_samples(420, 620, 330, 0.17, 0.35, 1.0)
+    two = bark_samples(400, 580, 300, 0.17, 0.35, 0.9)
+    bark = one + silence(0.09) + two
+    woof = bark_samples(240, 320, 190, 0.30, 0.2, 0.8)
+    (ROOT / "sounds").mkdir(exist_ok=True)
+    write_wav(ROOT / "sounds" / "bark.wav", bark)
+    write_wav(ROOT / "sounds" / "woof.wav", woof)
+    return [("bark.wav", bark), ("woof.wav", woof)]
+
+
 def main():
     big, small = big_poses(), mini_poses()
     for poses in (big, small):
@@ -615,7 +689,10 @@ def main():
     (ROOT / "hooks" / "sprites.ts").write_text(ts)
     preview([("big", BIG, big), ("mini", MINI, small), ("pup", PUP, pups), ("pup mini", PUP_MINI, mini_pups)],
             ROOT / "art" / "preview.png")
-    print("wrote hooks/sprites.ts and art/preview.png", file=sys.stderr)
+    clips = build_sounds()
+    if "--sound-preview" in sys.argv:
+        sound_preview(clips, ROOT / "art" / "sounds.png")
+    print("wrote hooks/sprites.ts, art/preview.png and sounds/", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,9 @@ function engine(on: On, tool: ToolCallResult = { result: 'ok' }, now = AFTERNOON
   const store = new Map<string, unknown>()
   const notified: string[] = []
   const agents: AgentInfo[] = []
+  const prompts: string[] = []
+  const sounds: string[] = []
+  const model = { reply: 'we dug up the bug!! good boy claude', delayMs: 0 }
   const clock = mock.clock(on, { now })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('store.get', (_$, e) => ({ value: store.get(e.key) }))
@@ -29,9 +32,20 @@ function engine(on: On, tool: ToolCallResult = { result: 'ok' }, now = AFTERNOON
     return { value: { isSent: true, channel: 'terminal_bell' } }
   })
   on('turn.complete', () => ({ text: '' }))
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
   on('agent.list', () => ({ value: [...agents] }))
+  on('model.complete', async (_$, e) => {
+    prompts.push(e.prompt)
+    if (model.delayMs > 0) await clock.sleep(model.delayMs)
+    const usage = { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
+    return { value: { isAnswered: true, text: model.reply, usage } }
+  })
+  on('audio.play', (_$, e) => {
+    sounds.push('asset' in e.clip ? String(e.clip.asset) : '?')
+    return { value: undefined }
+  })
   on('prompt.submit', (_$, e) => ({ text: e.text }))
-  return { store, clock, notified, agents }
+  return { store, clock, notified, agents, prompts, sounds, model }
 }
 
 const prompt = (text: string) => ({ text, wait: false, origin: { kind: 'composer' } }) as const
@@ -317,4 +331,58 @@ test('with the dog hidden, fetch answers in text and does not get stuck', async 
   expect((await $.command.run(doggo('fetch'))).text).toMatch(/^🐕 Biscuit: /)
   await $.command.run(doggo('fetch'))
   expect(store.get('balls')).toBe(2)
+})
+
+const turnStart = (turnId: string) => ({ text: 'go', turnId }) as const
+
+test('with recaps on, a long turn gets a dog-speak line from Haiku', { options: { recap: true } }, async ($, on) => {
+  const { clock, prompts } = engine(on)
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
+  await $.turn.start(turnStart('t1'))
+  await $.tool.call({ tool: 'Read', file_path: '/repo/session.ts' })
+  await $.turn.complete({ ...turnDone(45_000), turnId: 't1', answer: 'Fixed the session bug.' })
+  await clock.advance(1)
+  expect(prompts).toHaveLength(1)
+  expect(prompts[0]).toContain('- sniffed session.ts')
+  expect(prompts[0]).toContain('Fixed the session bug.')
+  expect(await ui.find({ type: 'Text', text: 'we dug up the bug!! good boy claude' })).toBeDefined()
+})
+
+test('short turns, and recaps switched off, never call the model', async ($, on) => {
+  const { clock, prompts } = engine(on)
+  await $.session.start(START)
+  await $.turn.complete(turnDone(120_000))
+  await clock.advance(1)
+  expect(prompts).toEqual([])
+})
+
+test('a recap that arrives after the next turn began is dropped', { options: { recap: true } }, async ($, on) => {
+  const { clock, model } = engine(on)
+  model.delayMs = 5_000
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
+  await $.turn.start(turnStart('t1'))
+  await $.turn.complete({ ...turnDone(45_000), turnId: 't1' })
+  await clock.advance(1)
+  await $.turn.start(turnStart('t2'))
+  await clock.advance(6_000)
+  expect(await ui.find({ type: 'Text', text: 'we dug up the bug!! good boy claude' })).toBe(undefined)
+})
+
+test('barks play only when switched on', { options: { barks: true } }, async ($, on) => {
+  const { sounds } = engine(on)
+  await $.session.start(START)
+  await $.turn.complete(turnDone(61_000))
+  await $.command.run(doggo('treat'))
+  await $.command.run(doggo('fetch'))
+  expect(sounds).toEqual(['sounds/bark.wav', 'sounds/woof.wav', 'sounds/bark.wav'])
+})
+
+test('no barks by default', async ($, on) => {
+  const { sounds } = engine(on)
+  await $.session.start(START)
+  await $.turn.complete(turnDone(61_000))
+  await $.command.run(doggo('treat'))
+  expect(sounds).toEqual([])
 })

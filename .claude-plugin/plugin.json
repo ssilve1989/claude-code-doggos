@@ -42,6 +42,24 @@
       "title": "Dog spinner",
       "description": "Replace Claude's spinner word with what the dog is doing",
       "default": true
+    },
+    "recap": {
+      "type": "boolean",
+      "title": "Dog-speak recaps",
+      "description": "After a turn of 30s or more, ask Haiku for a one-line recap in dog voice (uses a few hundred tokens of your plan per turn)",
+      "default": false
+    },
+    "barks": {
+      "type": "boolean",
+      "title": "Bark sounds",
+      "description": "Play a bark when a long turn ends, on fetch and on treats (macOS)",
+      "default": false
+    },
+    "barkVolume": {
+      "type": "number",
+      "title": "Bark volume",
+      "description": "From 0 (silent) to 1",
+      "default": 0.6
     }
   }
 }

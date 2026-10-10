@@ -15,6 +15,7 @@ import { startAnim, frameOf } from './animator'
 import type { Anim } from './animator'
 import { cellsOf } from './raster'
 import type { PupSet, SpriteSet } from './raster'
+import { RECAP_SYSTEM, cleanRecap, describeAction, logAction, recapPrompt, shouldRecap } from './recap'
 import { pickOutcome, showFrame } from './shows'
 import { PALETTE, PUPS, SHOWS, SPRITES } from './sprites'
 
@@ -61,6 +62,12 @@ let lastShowLine = ''
 let barkAfterMs = 60_000
 let breakAfterMs = 90 * 60_000
 let isSpinnerOn = true
+let isRecapOn = false
+let isBarksOn = false
+let barkVolume = 0.6
+// What the dog saw this turn, for the recap; and which turn is current, so a late recap can tell it's stale
+let turnLog: string[] = []
+let currentTurnId = ''
 // Approval waits that will bark unless the tool call returns first, by tool_use_id
 const waitBarks = new Map<string, { cancel(): void }>()
 
@@ -70,6 +77,9 @@ export const register: Register = (on, options) => {
   barkAfterMs = positive(options.barkAfterSeconds, 60) * 1000
   breakAfterMs = positive(options.breakAfterMinutes, 90) * 60_000
   isSpinnerOn = options.spinner !== false
+  isRecapOn = options.recap === true
+  isBarksOn = options.barks === true
+  barkVolume = typeof options.barkVolume === 'number' ? Math.min(1, Math.max(0, options.barkVolume)) : 0.6
 
   on('session.start', async ($, e, next) => {
     await wakeUp($)
@@ -112,6 +122,8 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => next(e))
 
   on('turn.start', async ($, e, next) => {
+    currentTurnId = e.turnId
+    turnLog = []
     await feel($, { kind: 'turnStart' })
     return next(e)
   }).catch(($, e, next) => next(e))
@@ -125,6 +137,10 @@ export const register: Register = (on, options) => {
     const milestone = String(e.tool) === 'Bash' && e.agentId === undefined ? classifyCommand(fieldOf(e, 'command')) : null
     if (milestone) await feel($, { kind: 'milestone', which: milestone, isOk: ran.isError !== true })
     else if (ran.isError === true) await feel($, { kind: 'toolFailed' })
+    if (e.agentId === undefined) {
+      const outcome = milestone === 'test' ? (ran.isError === true ? 'failed' : 'passed') : ran.isError === true ? 'failed' : null
+      turnLog = logAction(turnLog, describeAction(String(e.tool), targetOf(e), outcome))
+    }
     return ran
   }).catch(($, e, next) => next(e))
 
@@ -146,7 +162,17 @@ export const register: Register = (on, options) => {
     const now = await $.clock.now()
     await update($, streak, cur => noteActivity(cur, now))
     await feel($, { kind: 'turnComplete' })
-    if (shouldBark(e, barkAfterMs)) await bark($, "Claude's done! 🐾")
+    if (shouldBark(e, barkAfterMs)) {
+      await bark($, "Claude's done! 🐾")
+      playSound($, 'sounds/bark.wav')
+    }
+    if (isRecapOn && shouldRecap(e)) {
+      const turnId = e.turnId
+      const actions = turnLog
+      const answer = e.answer
+      // from a timer, so the model call belongs to the mod and not to this turn's ending
+      $.clock.after(0, () => recap($, turnId, actions, answer))
+    }
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -371,6 +397,7 @@ async function treat($: EngineInterface): Promise<void> {
   sessionTreats += 1
   const isAccepted = sessionTreats <= TREAT_CAP
   if (isAccepted) {
+    playSound($, 'sounds/woof.wav')
     await bump($, 'treats', 1)
     const bond = toCount(await $.store.get('bond'))
     await bump($, 'bond', 2)
@@ -397,6 +424,7 @@ async function play($: EngineInterface, kind: 'fetch' | TrickName): Promise<void
     await feel($, { kind: 'say', pose: 'happy', line })
   } else {
     await update($, show, () => ({ kind, outcome, startedAt: now }))
+    if (kind === 'fetch') playSound($, 'sounds/bark.wav')
   }
   if (kind !== 'fetch') return
   sessionFetches += 1
@@ -565,6 +593,27 @@ function drawn(requestId: string, set: SpriteSet, pose: Pose, now: number) {
   const frame = advanceAnim(requestId, set, pose, now)
   lastBlit.set(requestId, frame)
   return cellsOf(frame, set.width, set.height, PALETTE)
+}
+
+/** Asks Haiku for a one-line dog's-eye recap and puts it in the bubble, unless a newer turn has begun. */
+async function recap($: EngineInterface, turnId: string, actions: readonly string[], answer: string): Promise<void> {
+  try {
+    const name = (await read($, stats)).name
+    const r = await $.model.complete({
+      model: 'haiku', system: RECAP_SYSTEM, prompt: recapPrompt(name, actions, answer), maxTokens: 120, timeoutMs: 15_000,
+    })
+    const line = r.isAnswered ? cleanRecap(r.text) : null
+    if (line && turnId === currentTurnId) await feel($, { kind: 'say', pose: 'happy', line })
+  } catch {
+    // no recap this time: the bubble keeps "done!"
+  }
+}
+
+function playSound($: EngineInterface, asset: string): void {
+  if (!isBarksOn) return
+  $.audio.play({ asset }, { gain: barkVolume }).catch(() => {
+    // no player here (Linux, Windows) or the clip failed: barks are a nicety
+  })
 }
 
 async function bark($: EngineInterface, text: string): Promise<void> {
