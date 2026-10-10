@@ -2,9 +2,11 @@
 
 A pixel-art golden retriever that keeps you company in Claude Code. It sniffs
 the files Claude reads, digs when it edits, fetches your shell commands, tilts
-its head when Claude asks permission, looks worried when a tool fails, and
-falls asleep when you wander off. Pet it, feed it, and it remembers you
-between sessions.
+its head when Claude asks permission, and gets the zoomies when your tests
+pass. Every subagent Claude starts brings a puppy. It barks when a long turn is
+done, brings its leash when you've worked too long, plays fetch, learns tricks
+as your bond grows, and dresses up for the holidays. It remembers you between
+sessions.
 
 ![sprite sheet](art/preview.png)
 
@@ -104,8 +106,9 @@ files and commands from that turn and the start of Claude's answer. The barks
 are synthesized by `art/build.py` (`sounds/*.wav`); swap in your own clips with
 the same names if you'd like a real dog.
 
-Changes made with `/doggo band|pane|off` or `/doggo name <name>` are saved
-and take precedence over these options from then on.
+Changes made with `/doggo band|pane|off`, `/doggo name <name>` or
+`/doggo coat <coat>` are saved and take precedence over these options from then
+on.
 
 The pane opens beside the transcript in a wide fullscreen terminal and above
 the prompt otherwise. It needs 48 columns for the big sprite and falls back to
@@ -120,12 +123,10 @@ the small one below that.
 - **Milestones:** passing tests (npm/pnpm/yarn/bun test, vitest, jest, pytest,
   go test, cargo test, claude plugin test) set off the zoomies; failing ones
   get sad ears. A successful `git commit` or `git push` is celebrated.
-
 - **The pack:** every subagent or teammate Claude starts brings a puppy. It
   runs in from the right and sits while its agent works, then wags (or droops
   its ears if the agent failed) and runs off when it's done. Up to 4 show at
   once, with a `+N` for the rest. In the pane each pup has its task under it.
-
 - **Dress-up days:** a witch hat Oct 24–31, a Santa hat Dec 1–26, a party hat
   for New Year's and on the dog's birthday (the anniversary of your first
   session together), and a heart bandana on Valentine's Day. On those days the
@@ -169,13 +170,18 @@ friend, *roll over* as a best friend and *play dead* as a soulmate. Fetch
 usually ends with the ball dropped at your feet, but now and then there's a
 squirrel, or the dog decides the ball is its now.
 
-In the pane, `p` pets, `t` gives a treat and `f` throws the ball while the pane has focus
-(Ctrl+X then Tab, or click it). `Esc` returns focus to the prompt.
+In the pane, `p` pets, `t` gives a treat and `f` throws the ball while the
+pane has focus (Ctrl+X then Tab, or click it). `Esc` returns focus to the
+prompt.
+
+While the dog is on screen, commands answer through the dog. With it hidden
+(`/doggo off`), they reply with a line of text instead.
 
 ## Memory
 
-The dog's name, bond, stats and display choice live in the mod's store, a
-JSON file under `~/.claude/plugins/store/`. Every session on your machine
+The dog's name, bond, stats (sessions, pets, treats, balls and things
+fetched), coat and display choice live in the mod's store, a JSON file under
+`~/.claude/plugins/store/`. Every session on your machine
 shares it. Delete that file to start over with a dog who has never met you.
 
 ## Uninstall
@@ -199,7 +205,11 @@ start a session with `--safe-mode`.
 - **Blocky or wrong colours:** the terminal isn't truecolor. Check
   `echo $COLORTERM` prints `truecolor`.
 - **Dog only shows as text:** the band is narrower than 16 columns or shorter
-  than 6 rows, or you're in the Desktop app.
+  than 6 rows (8 on dress-up days), or you're in the Desktop app.
+- **No bark notifications:** they only fire for turns of `barkAfterSeconds` or
+  more. They go through Claude Code's `preferredNotifChannel`; check that
+  setting, and that your terminal is allowed to show notifications in macOS
+  System Settings → Notifications.
 
 ## Development
 
@@ -212,10 +222,25 @@ python3 art/build.py      # redraw sprites -> hooks/sprites.ts and art/preview.p
 python3 art/build.py --sound-preview   # also plot the barks to art/sounds.png
 ```
 
-`hooks/mood.ts`, `hooks/bond.ts` and `hooks/raster.ts` are pure logic;
-`hooks/register.tsx` wires them to Claude Code's events. `hooks/sprites.ts` is
-generated, so edit `art/build.py` instead. Design notes are in
-`docs/superpowers/specs/`.
+`hooks/register.tsx` wires everything to Claude Code's events. The rest of
+`hooks/` is pure logic with no access to Claude Code, each file tested on its
+own:
+
+| File | What it decides |
+|---|---|
+| `mood.ts` | the dog's mood and pose from session events |
+| `bond.ts` | bond levels, greetings, tricks learned |
+| `nudges.ts` | barks, break reminders, night owl, the spinner word |
+| `milestones.ts` | which shell commands are tests, commits or pushes; context levels |
+| `pack.ts` | puppies arriving, sitting, leaving, scooting |
+| `shows.ts` | fetch and trick timelines |
+| `recap.ts` | the dog-speak recap prompt and its cleanup |
+| `looks.ts` | coats, the outfit calendar, where hats go |
+| `animator.ts` | smooth transitions between poses |
+| `raster.ts` | turning pixel frames into terminal cells |
+
+`hooks/sprites.ts` and `sounds/` are generated, so edit `art/build.py` instead.
+The original design is in `docs/superpowers/specs/`.
 
 ### Commits and releases
 
