@@ -1,6 +1,6 @@
 // What the dog remembers about you, and what it makes of it. No `$` here.
 
-import type { Display } from '../types'
+import type { Display, TrickName } from '../types'
 
 export const PET_CAP = 5
 export const TREAT_CAP = 3
@@ -43,4 +43,27 @@ export function toCount(v: unknown): number {
 
 export function toDisplay(v: unknown): Display | undefined {
   return v === 'band' || v === 'pane' || v === 'off' ? v : undefined
+}
+
+/** One trick per bond level, learned on reaching it. */
+export const TRICKS: Record<TrickName, { title: string; level: Level['title'] }> = {
+  sit: { title: 'sit pretty', level: 'stranger' },
+  paw: { title: 'paw', level: 'friend' },
+  roll: { title: 'roll over', level: 'best friend' },
+  dead: { title: 'play dead', level: 'soulmate' },
+}
+
+const TRICK_ORDER: readonly TrickName[] = ['sit', 'paw', 'roll', 'dead']
+
+export function knownTricks(bond: number): TrickName[] {
+  const reached = LEVELS.filter(l => bond >= l.from).map(l => l.title)
+  return TRICK_ORDER.filter(t => reached.some(title => title === TRICKS[t].level))
+}
+
+export function trickFor(level: string): TrickName | undefined {
+  return TRICK_ORDER.find(t => TRICKS[t].level === level)
+}
+
+export function isTrick(name: string): name is TrickName {
+  return TRICK_ORDER.some(t => t === name)
 }

@@ -17,6 +17,7 @@ export type DogEvent =
   | { kind: 'context'; level: ContextLevel }
   | { kind: 'compacted' }
   | { kind: 'milestone'; which: Milestone; isOk: boolean }
+  | { kind: 'say'; pose: Pose; line: string }
 
 export const REACTION_MS = 3000
 export const SLEEP_AFTER_MS = 10 * 60 * 1000
@@ -70,6 +71,8 @@ function apply(m: Mood, ev: DogEvent, now: number): Mood {
       return react('yawn', "it's late… bed?", NUDGE_MS)
     case 'context':
       return { ...m, context: ev.level }
+    case 'say':
+      return react(ev.pose, ev.line)
     case 'compacted':
       return { ...react('shake', '*shakes off* fresh start!'), context: 'ok' }
     case 'milestone':

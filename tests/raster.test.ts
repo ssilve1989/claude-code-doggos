@@ -40,3 +40,9 @@ test('compose stamps frames onto a transparent canvas, clipped and optionally mi
   expect(compose(3, 1, [{ ...sprite, x: 0, y: 0 }, { frame: '03', width: 2, height: 1, x: 0, y: 0 }])).toBe('130')
   expect(compose(2, 2, [{ frame: '1', width: 1, height: 1, x: 1, y: 1 }])).toBe('0001')
 })
+
+test('frames use base-36 palette indices, so more than ten colours fit', async () => {
+  const palette = [DEFAULT_COLOR, ...Array.from({ length: 11 }, (_, i) => 0x100000 + i)]
+  const r = cellsOf('a' + '0', 1, 2, palette)
+  expect(words(r.cells)).toEqual([0x2580, 0x100009, DEFAULT_COLOR])
+})

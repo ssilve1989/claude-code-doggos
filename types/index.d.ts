@@ -25,6 +25,8 @@ export type Stats = {
   pets: number
   sessions: number
   fetched: number
+  /** Balls fetched, as opposed to `fetched`: things fetched for Claude. */
+  balls: number
   firstMet: number
   lastSeen: number
 }
@@ -46,6 +48,11 @@ export type Pup = {
   fromSlot: number | null
 }
 
+export type TrickName = 'sit' | 'paw' | 'roll' | 'dead'
+export type FetchOutcome = 'drop' | 'squirrel' | 'keep'
+/** A short scripted performance that takes over the dog's drawing until it ends. */
+export type Show = { kind: 'fetch' | TrickName; outcome: FetchOutcome; startedAt: number }
+
 /** An unbroken run of activity; `lastRemindedAt` starts at `startedAt`. */
 export type Streak = { startedAt: number; lastActivityAt: number; lastRemindedAt: number }
 
@@ -59,6 +66,7 @@ declare module 'claude-code' {
       streak: Streak | null
       lastYawnAt: number
       pack: readonly Pup[]
+      show: Show | null
     }
   }
 }

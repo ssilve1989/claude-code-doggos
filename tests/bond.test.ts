@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { bondLevel, greeting, levelUp, toCount, toDisplay } from '../hooks/bond'
+import { TRICKS, bondLevel, greeting, knownTricks, levelUp, toCount, toDisplay, trickFor } from '../hooks/bond'
 
 const DAY = 24 * 60 * 60 * 1000
 
@@ -28,4 +28,13 @@ test('stored values are checked before use', async () => {
   expect(toCount(undefined)).toBe(0)
   expect(toDisplay('pane')).toBe('pane')
   expect(toDisplay('sideways')).toBe(undefined)
+})
+
+test('each bond level teaches a trick', async () => {
+  expect(knownTricks(0)).toEqual(['sit'])
+  expect(knownTricks(10)).toEqual(['sit', 'paw'])
+  expect(knownTricks(200)).toEqual(['sit', 'paw', 'roll', 'dead'])
+  expect(trickFor('best friend')).toBe('roll')
+  expect(trickFor('stranger')).toBe('sit')
+  expect(TRICKS.dead).toEqual({ title: 'play dead', level: 'soulmate' })
 })

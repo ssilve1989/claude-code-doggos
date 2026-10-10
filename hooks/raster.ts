@@ -1,4 +1,4 @@
-// Turns a sprite frame (one palette index per pixel) into Raster cells:
+// Turns a sprite frame (one base-36 palette index per pixel) into Raster cells:
 // two pixels per terminal cell, top as the ▀ glyph's colour, bottom as its background.
 
 import type { Pose } from '../types'
@@ -20,6 +20,16 @@ export type Sprites = { big: SpriteSet; mini: SpriteSet }
 export type PupSet = { width: number; height: number; poses: Record<PupPose, readonly string[]> }
 export type PupSprites = { big: PupSet; mini: PupSet }
 
+export type ShowFrame =
+  | 'side' | 'run' | 'runBall' | 'sitBall' | 'keepBall' | 'pretty' | 'paw' | 'lie' | 'belly' | 'dead' | 'deadPeek'
+export type ShowSet = {
+  width: number
+  height: number
+  frames: Record<ShowFrame, readonly string[]>
+  ball: { width: number; height: number; frame: string }
+}
+export type ShowSprites = { big: ShowSet; mini: ShowSet }
+
 export const PUP_FRAME_MS: Record<PupPose, number> = { sit: 900, wag: 160, sad: 1000, run: 110, turn: 150 }
 
 export type Cells = { columns: number; rows: number; cells: string }
@@ -35,7 +45,7 @@ export function cellsOf(frame: string, width: number, height: number, palette: r
   const words = new Uint32Array(width * rows * 3)
   const colour = (x: number, y: number): number | undefined => {
     if (y >= height) return undefined
-    const index = frame.charCodeAt(y * width + x) - 48
+    const index = parseInt(frame[y * width + x] ?? '0', 36)
     return index === 0 ? undefined : palette[index]
   }
   for (let row = 0; row < rows; row++) {

@@ -142,10 +142,17 @@ Notifications use your terminal's notification channel (Claude Code's
 | `/doggo` | toggle the pane (big sprite + stats) |
 | `/doggo pet` | pet the dog (bond +1, counts 5 times per session) |
 | `/doggo treat` | give a treat (bond +2; the 4th in a session is refused) |
+| `/doggo fetch` | throw the ball (bond +1, up to 3 times per session) |
+| `/doggo trick [name]` | a trick it knows: a random one, or `sit`, `paw`, `roll`, `dead` |
 | `/doggo band` / `pane` / `off` | move or hide the dog |
 | `/doggo name <name>` | rename the dog |
 
-In the pane, `p` pets and `t` gives a treat while the pane has focus
+Tricks are learned with the bond: *sit pretty* from the start, *paw* as a
+friend, *roll over* as a best friend and *play dead* as a soulmate. Fetch
+usually ends with the ball dropped at your feet, but now and then there's a
+squirrel, or the dog decides the ball is its now.
+
+In the pane, `p` pets, `t` gives a treat and `f` throws the ball while the pane has focus
 (Ctrl+X then Tab, or click it). `Esc` returns focus to the prompt.
 
 ## Memory

@@ -22,6 +22,8 @@ PALETTE = [
     0xE86878,   # 7 tongue
     0xFFFFFF,   # 8 highlight
     0xB83A2E,   # 9 leash
+    0xD4E83C,   # a tennis ball
+    0x8FA32A,   # b tennis ball shadow
 ]
 
 POSES = ["idle", "excited", "happy", "worried", "tilt", "sleep", "leash", "yawn", "sniff", "dig", "walk",
@@ -73,7 +75,7 @@ class Canvas:
 
 # ---------------------------------------------------------------- big, front
 
-def front(eyes="open", mouth="tongue", ears="down", tail=0, tilt=0, dy=0):
+def front(eyes="open", mouth="tongue", ears="down", tail=0, tilt=0, dy=0, paws="down"):
     k = Canvas(BIG)
     c = 24
     # tail out to the right, cream feathered tip
@@ -88,9 +90,16 @@ def front(eyes="open", mouth="tongue", ears="down", tail=0, tilt=0, dy=0):
     k.rect(c-14, 33, c-8, 34, 3); k.rect(c+8, 33, c+14, 34, 3)
     k.e(c, 23, 8, 8, 2)
     k.poly([(c-4,17),(c+4,17),(c+5,22),(c+3,25),(c+2,23),(c,27),(c-2,23),(c-3,25),(c-5,22)], 4)
-    k.rect(c-5, 26, c-2, 33, 3); k.rect(c+2, 26, c+5, 33, 3)
-    k.line(c-2, 27, c-2, 33, 5); k.line(c+2, 27, c+2, 33, 5)
-    k.rect(c-6, 33, c-2, 34, 4); k.rect(c+2, 33, c+6, 34, 4)
+    if paws == "up":  # sitting pretty: both front paws held up at the chest
+        # outlined: against the cream chest an unoutlined paw disappears
+        k.d.rectangle((c-7, 19, c-2, 24), fill=3, outline=1); k.d.rectangle((c+2, 19, c+7, 24), fill=3, outline=1)
+        k.line(c-6, 20, c-3, 20, 4); k.line(c+3, 20, c+6, 20, 4)
+    else:
+        k.rect(c-5, 26, c-2, 33, 3); k.line(c-2, 27, c-2, 33, 5); k.rect(c-6, 33, c-2, 34, 4)
+        if paws == "one":  # offering a paw
+            k.d.rectangle((c+3, 17, c+8, 24), fill=3, outline=1); k.line(c+4, 18, c+7, 18, 4)
+        else:
+            k.rect(c+2, 26, c+5, 33, 3); k.line(c+2, 27, c+2, 33, 5); k.rect(c+2, 33, c+6, 34, 4)
     head_front(k, c + tilt, 10 + dy, eyes, mouth, ears, tilt)
     if mouth == "leash":  # strap from the mouth, hanging down past the right paw
         y = 10 + dy
@@ -338,6 +347,97 @@ def mini_pup_poses():
     }
 
 
+# --------------------------------------------------------------------- shows
+
+def ball(im, x, y, size):
+    """Stamps a tennis ball onto a finished frame; big balls get an outline."""
+    d = ImageDraw.Draw(im)
+    if size >= 5:
+        d.ellipse((x, y, x + size - 1, y + size - 1), fill=1)
+        d.ellipse((x + 1, y + 1, x + size - 2, y + size - 2), fill=10)
+        d.point((x + size - 2, y + size - 2), fill=11)
+    else:
+        d.rectangle((x, y, x + size - 1, y + size - 1), fill=10)
+        d.point((x + size - 1, y + size - 1), fill=11)
+    return im
+
+
+def belly_up(eyes="closed", legs="bent", tongue=True):
+    """Lying on its back, legs in the air: the middle of a roll, or playing dead."""
+    k = Canvas(BIG)
+    k.poly([(37,30),(43,27),(45,28),(41,32)], 2); k.px(45, 27, 4)
+    k.e(25, 30, 13, 5, 2)
+    k.e(25, 28, 8, 3, 4)
+    for x in (16, 21, 29, 34):
+        top = 20 if legs == "stiff" else 22
+        k.rect(x, top, x + 2, 26, 3); k.rect(x, top - 1, x + 2, top, 4)
+    k.e(9, 30, 6, 5, 2)
+    k.poly([(4,26),(7,25),(8,28),(5,30)], 5, 1)
+    k.e(7, 33, 3, 2, 4); k.px(6, 34, 6)
+    for i, ex in enumerate((8, 12)):
+        open_eye = eyes == "open" or (eyes == "peek" and i == 1)
+        if open_eye:
+            k.rect(ex, 29, ex + 1, 30, 6); k.px(ex, 29, 8)
+        else:
+            k.line(ex - 1, 30, ex + 1, 30, 6)
+    if tongue:
+        k.rect(4, 33, 5, 35, 7)
+    return k.done()
+
+
+def mini_side(step=0):
+    """The band dog in side view, facing right: running after the ball."""
+    k = Canvas(MINI)
+    k.line(0, 4, 2, 6, 2); k.px(0, 3, 4)
+    k.rect(2, 5, 10, 8, 2); k.line(3, 8, 9, 8, 4)
+    a = 1 if step else 0
+    for x in (3 + a, 5 - a, 8 + a, 10 - a):
+        k.rect(x, 9, x, 11, 2)
+    k.e(12, 4, 3, 3, 2)
+    k.rect(14, 4, 15, 6, 3); k.px(15, 4, 6)
+    k.poly([(10,2),(11,2),(11,6),(10,6)], 5)
+    k.px(13, 3, 6)
+    return k.done()
+
+
+def show_frames():
+    run = [side(head_y=9, tail=1, step=0), side(head_y=8, tail=0, step=1)]
+    run_ball = [ball(f.copy(), 41, 10, 5) for f in run]
+    return {
+        "side": [side()],
+        "run": run,
+        "runBall": run_ball,
+        "sitBall": [ball(front(), 9, 30, 5), ball(front(tail=1), 9, 30, 5)],
+        "keepBall": [ball(front(mouth="none", eyes="happy"), 22, 14, 5), ball(front(mouth="none", eyes="happy", tail=1), 22, 14, 5)],
+        "pretty": [front(paws="up", eyes="happy", dy=-1), front(paws="up", eyes="happy", tail=1, dy=-1)],
+        "paw": [front(paws="one"), front(paws="one", tail=1)],
+        "lie": [lying(head_y=27, eyes="open", mouth="tongue", ears="down")],
+        "belly": [belly_up(eyes="closed")],
+        "dead": [belly_up(eyes="closed", legs="stiff")],
+        "deadPeek": [belly_up(eyes="peek", legs="stiff")],
+    }
+
+
+def mini_show_frames():
+    run = [mini_side(0), mini_side(1)]
+    return {
+        "side": [mini_side(0)],
+        "run": run,
+        "runBall": [ball(f.copy(), 14, 7, 2) for f in run],
+        "sitBall": [ball(mini(), 1, 9, 2)],
+        "keepBall": [ball(mini(mouth="none", eyes="happy"), 7, 8, 2)],
+        "pretty": [mini(paws=3, eyes="happy", dy=-1)],
+        "paw": [mini(paws=1)],
+        "lie": [mini(mouth="tongue", ears="droop", dy=1)],
+        "belly": [mini(eyes="closed", ears="droop", dy=2)],
+        "dead": [mini(eyes="closed", mouth="none", ears="droop", dy=2)],
+        "deadPeek": [mini(eyes="sad", mouth="none", ears="droop", dy=2)],
+    }
+
+
+SHOW_FRAMES = ["side", "run", "runBall", "sitBall", "keepBall", "pretty", "paw", "lie", "belly", "dead", "deadPeek"]
+
+
 def big_stances():
     return {p: ("lie" if p in ("sleep", "lie") else "stand" if p in ("sniff", "dig", "walk", "zoomies") else "sit")
             for p in POSES}
@@ -455,7 +555,7 @@ def encode(frames, size):
         assert f.size == size, f"frame is {f.size}, want {size}"
         data = list(f.getdata())
         assert all(0 <= v < len(PALETTE) for v in data), "pixel outside the palette"
-        out.append("".join(str(v) for v in data))
+        out.append("".join("0123456789abcdefghijklmnopqrstuvwxyz"[v] for v in data))
     return out
 
 
@@ -498,12 +598,19 @@ def main():
         "big": {"width": PUP[0], "height": PUP[1], "poses": {p: encode(f, PUP) for p, f in pups.items()}},
         "mini": {"width": PUP_MINI[0], "height": PUP_MINI[1], "poses": {p: encode(f, PUP_MINI) for p, f in mini_pups.items()}},
     }
+    shows = {}
+    for name, size, frames, ball_size in (("big", BIG, show_frames(), 5), ("mini", MINI, mini_show_frames(), 2)):
+        assert list(frames) == SHOW_FRAMES, "every size draws every show frame"
+        b = ball(Image.new("P", (ball_size, ball_size), 0), 0, 0, ball_size)
+        shows[name] = {"width": size[0], "height": size[1], "frames": {k: encode(f, size) for k, f in frames.items()},
+                       "ball": {"width": ball_size, "height": ball_size, "frame": encode([b], (ball_size, ball_size))[0]}}
     ts = (
         "// GENERATED by art/build.py: do not edit.\n"
-        "import type { PupSprites, Sprites } from './raster'\n\n"
+        "import type { PupSprites, ShowSprites, Sprites } from './raster'\n\n"
         f"export const PALETTE: readonly number[] = {json.dumps(palette)}\n\n"
         f"export const SPRITES: Sprites = {json.dumps(sprites, indent=2)}\n\n"
-        f"export const PUPS: PupSprites = {json.dumps(pup_sets, indent=2)}\n"
+        f"export const PUPS: PupSprites = {json.dumps(pup_sets, indent=2)}\n\n"
+        f"export const SHOWS: ShowSprites = {json.dumps(shows, indent=2)}\n"
     )
     (ROOT / "hooks" / "sprites.ts").write_text(ts)
     preview([("big", BIG, big), ("mini", MINI, small), ("pup", PUP, pups), ("pup mini", PUP_MINI, mini_pups)],

@@ -1,8 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Display, Pose, Stats } from '../types'
-import { PET_CAP, TREAT_CAP, bondLevel, greeting, levelUp, toCount, toDisplay } from './bond'
+import type { Display, Pose, Stats, TrickName } from '../types'
+import { PET_CAP, TREAT_CAP, TRICKS, bondLevel, greeting, isTrick, knownTricks, levelUp, toCount, toDisplay, trickFor } from './bond'
 import { classifyCommand, contextLevel } from './milestones'
 import { initialMood, poseOf, step, tick } from './mood'
 import { MAX_SLOTS, drawPack, layout, reconcile } from './pack'
@@ -15,7 +15,8 @@ import { startAnim, frameOf } from './animator'
 import type { Anim } from './animator'
 import { cellsOf } from './raster'
 import type { PupSet, SpriteSet } from './raster'
-import { PALETTE, PUPS, SPRITES } from './sprites'
+import { pickOutcome, showFrame } from './shows'
+import { PALETTE, PUPS, SHOWS, SPRITES } from './sprites'
 
 const PANE = 'doggo'
 const TICK_MS = 100
@@ -24,25 +25,29 @@ const BUBBLE_COLUMNS = 12
 const BAND_SLOT = 10
 const PANE_SLOT = 26
 const POLL_EVERY_TICKS = 10
-const USAGE = 'usage: /doggo [pet | treat | band | pane | off | name <name>]'
+const HINT = 'pet | treat | fetch | trick [name] | band | pane | off | name <name>'
+const USAGE = `usage: /doggo [${HINT}]`
+const FETCH_BOND_CAP = 3
 
 const mood = atom({ plugin: 'doggo', key: 'mood' } as const, initialMood(0))
 const stats = atom({ plugin: 'doggo', key: 'stats' } as const, {
-  name: 'Biscuit', bond: 0, treats: 0, pets: 0, sessions: 0, fetched: 0, firstMet: 0, lastSeen: 0,
+  name: 'Biscuit', bond: 0, treats: 0, pets: 0, sessions: 0, fetched: 0, balls: 0, firstMet: 0, lastSeen: 0,
 })
 const display = atom({ plugin: 'doggo', key: 'display' } as const, 'band')
 const isCounted = atom({ plugin: 'doggo', key: 'isCounted' } as const, false)
 const streak = atom({ plugin: 'doggo', key: 'streak' } as const, null)
 const lastYawnAt = atom({ plugin: 'doggo', key: 'lastYawnAt' } as const, 0)
 const pack = atom({ plugin: 'doggo', key: 'pack' } as const, [])
+const show = atom({ plugin: 'doggo', key: 'show' } as const, null)
 
-type CountKey = 'bond' | 'treats' | 'pets' | 'sessions' | 'fetched'
+type CountKey = 'bond' | 'treats' | 'pets' | 'sessions' | 'fetched' | 'balls'
 
 // Per-load values: losing them on a hot reload only resets session caps and the blit cache.
 let defaultName = 'Biscuit'
 let defaultDisplay: Display = 'band'
 let sessionPets = 0
 let sessionTreats = 0
+let sessionFetches = 0
 let pendingFetched = 0
 let bandId: string | null = null
 let paneSet: SpriteSet = SPRITES.big
@@ -51,6 +56,8 @@ const anims = new Map<string, Anim>()
 // How each drawing last laid out its pack, so the tick can repaint it without a render pass
 const packViews = new Map<string, { set: PupSet; geo: Geometry; height: number }>()
 let ticks = 0
+// The bubble is text, not pixels: a blit can't change it, so a new show line needs a redraw
+let lastShowLine = ''
 let barkAfterMs = 60_000
 let breakAfterMs = 90 * 60_000
 let isSpinnerOn = true
@@ -72,7 +79,7 @@ export const register: Register = (on, options) => {
       await $.command.register({
         name: 'doggo',
         description: 'Your golden retriever buddy',
-        argumentHint: 'pet | treat | band | pane | off | name <name>',
+        argumentHint: HINT,
         immediate: true,
       })
     } catch {
@@ -173,6 +180,24 @@ export const register: Register = (on, options) => {
       case 'off':
         await setDisplay($, sub)
         return {}
+      case 'fetch':
+        await play($, 'fetch')
+        return reply($)
+      case 'trick': {
+        const name = rest[0] ?? ''
+        const known = knownTricks(toCount(await $.store.get('bond')))
+        if (name === '') {
+          await play($, known[Math.floor(Math.random() * known.length)] ?? 'sit')
+          return reply($)
+        }
+        if (!isTrick(name)) return { text: `tricks: ${known.join(', ')} (and more to learn)` }
+        if (!known.includes(name)) {
+          await feel($, { kind: 'say', pose: 'tilt', line: `don't know that one yet… (${TRICKS[name].level})` })
+          return reply($)
+        }
+        await play($, name)
+        return reply($)
+      }
       case 'name': {
         const name = rest.join(' ').trim()
         if (!name) return { text: USAGE }
@@ -217,7 +242,9 @@ export const register: Register = (on, options) => {
     }
     const { Box, Raster, Text } = $.ui.resolve(e)
     bandId = e.requestId
-    const r = drawn(bandId, set, pose, now)
+    const playing = await read($, show)
+    const act = playing ? showFrame(playing, now, SHOWS.mini, set) : null
+    const r = act ? cellsOf(act.frame, set.width, set.height, PALETTE) : drawn(bandId, set, pose, now)
     const hasBubble = e.props.bodyColumns >= set.width + 1 + BUBBLE_COLUMNS
     // the pack only gets what the bubble can spare, so it is the first thing a narrow band drops
     const spare = e.props.bodyColumns - set.width - 1 - BUBBLE_COLUMNS - 4
@@ -230,7 +257,7 @@ export const register: Register = (on, options) => {
         {hasBubble && (
           <Box flexDirection="column" justifyContent="center" flexGrow={1}>
             <Text bold color="#E8AC4C">{s.name}</Text>
-            <Text wrap="truncate-end">{m.line}</Text>
+            <Text wrap="truncate-end">{act?.line ?? m.line}</Text>
           </Box>
         )}
         {view && <Raster key="pack" columns={view.cells.columns} rows={view.cells.rows} cells={view.cells.cells} />}
@@ -247,6 +274,9 @@ export const register: Register = (on, options) => {
     const level = bondLevel(s.bond)
     const hearts = '♥'.repeat(level.hearts) + '♡'.repeat(4 - level.hearts)
     const since = s.firstMet ? new Date(s.firstMet).toISOString().slice(0, 10) : 'today'
+    const playing = await read($, show)
+    const isBig = e.props.bodyColumns >= SPRITES.big.width
+    const paneAct = playing ? showFrame(playing, now, isBig ? SHOWS.big : SHOWS.mini, isBig ? SPRITES.big : SPRITES.mini) : null
     const { Box, Button, Text } = $.ui.resolve(e)
     const info = (
       <Box flexDirection="column">
@@ -254,19 +284,20 @@ export const register: Register = (on, options) => {
           <Text bold color="#E8AC4C">{s.name}</Text>
           <Text dimColor>· {level.title} {hearts}</Text>
         </Box>
-        <Text wrap="truncate-end">{m.line || ' '}</Text>
+        <Text wrap="truncate-end">{paneAct?.line ?? (m.line || ' ')}</Text>
         <Text dimColor>together {s.sessions} sessions · since {since}</Text>
-        <Text dimColor>treats {s.treats} · pets {s.pets} · things fetched {grouped(s.fetched + pendingFetched)}</Text>
+        <Text dimColor>treats {s.treats} · pets {s.pets} · balls {s.balls} · things fetched {grouped(s.fetched + pendingFetched)}</Text>
         <Box flexDirection="row" columnGap={3}>
           <Button key="pet" label="pet" hotkey="p" plain onPress={() => pet($)} />
           <Button key="treat" label="treat" hotkey="t" plain onPress={() => treat($)} />
+          <Button key="fetch" label="fetch" hotkey="f" plain onPress={() => play($, 'fetch')} />
         </Box>
       </Box>
     )
     if (e.surface !== 'terminal') return info
     const { Raster } = $.ui.resolve(e)
-    paneSet = e.props.bodyColumns >= SPRITES.big.width ? SPRITES.big : SPRITES.mini
-    const r = drawn(PANE, paneSet, poseOf(m, now), now)
+    paneSet = isBig ? SPRITES.big : SPRITES.mini
+    const r = paneAct ? cellsOf(paneAct.frame, paneSet.width, paneSet.height, PALETTE) : drawn(PANE, paneSet, poseOf(m, now), now)
     const pups = await read($, pack)
     const slots = Math.min(MAX_SLOTS, Math.floor(e.props.bodyColumns / PANE_SLOT))
     const view = pups.length > 0 && slots > 0 ? packView(PANE, pups, now, PUPS.big, slots, PANE_SLOT, PUPS.big.height) : null
@@ -350,7 +381,32 @@ async function treat($: EngineInterface): Promise<void> {
 }
 
 function celebrate($: EngineInterface, name: string, title: string | null): void {
-  if (title) $.ui.toast(`${name} thinks you're a ${title} now ♥`)
+  if (!title) return
+  const trick = trickFor(title)
+  $.ui.toast(`${name} thinks you're a ${title} now ♥${trick ? ` and learned ${TRICKS[trick].title}!` : ''}`)
+}
+
+/** Starts fetch or a trick, unless a show is already running. */
+async function play($: EngineInterface, kind: 'fetch' | TrickName): Promise<void> {
+  if ((await read($, show)) !== null) return
+  const now = await $.clock.now()
+  const outcome = pickOutcome(Math.random())
+  if ((await read($, display)) === 'off') {
+    // nothing to watch: the dog just tells you how it went
+    const line = kind !== 'fetch' ? `*${TRICKS[kind].title}*` : outcome === 'drop' ? '*fetches the ball* again!' : outcome === 'keep' ? '*fetches the ball* mine!' : 'there was a SQUIRREL'
+    await feel($, { kind: 'say', pose: 'happy', line })
+  } else {
+    await update($, show, () => ({ kind, outcome, startedAt: now }))
+  }
+  if (kind !== 'fetch') return
+  sessionFetches += 1
+  await bump($, 'balls', 1)
+  if (sessionFetches <= FETCH_BOND_CAP) {
+    const bond = toCount(await $.store.get('bond'))
+    await bump($, 'bond', 1)
+    celebrate($, (await read($, stats)).name, levelUp(bond, bond + 1))
+  }
+  await refreshStats($)
 }
 
 /** Commands stay quiet while the dog is on screen to answer for itself. */
@@ -385,6 +441,7 @@ async function loadStats($: EngineInterface): Promise<Stats> {
     pets: toCount(await $.store.get('pets')),
     sessions: toCount(await $.store.get('sessions')),
     fetched: toCount(await $.store.get('fetched')),
+    balls: toCount(await $.store.get('balls')),
     firstMet: toCount(await $.store.get('firstMet')),
     lastSeen: toCount(await $.store.get('lastSeen')),
   }
@@ -415,6 +472,29 @@ async function onTick($: EngineInterface): Promise<void> {
   for (const [requestId, view] of packViews) {
     const isShown = (shown === 'band' && requestId === bandId) || (shown === 'pane' && requestId === PANE)
     if (isShown) await repaint($, `${requestId}:pack`, requestId, 'pack', drawPack(moved, now, view.set, view.geo, view.height))
+  }
+  const playing = await read($, show)
+  if (playing) {
+    // the show runs on whichever sprite size is on screen; sizes differ in length
+    const isBand = shown === 'band'
+    const sit = isBand ? SPRITES.mini : paneSet
+    const set = isBand || paneSet !== SPRITES.big ? SHOWS.mini : SHOWS.big
+    const requestId = isBand ? bandId : PANE
+    const act = showFrame(playing, now, set, sit)
+    if (act) {
+      if (requestId !== null) await repaint($, requestId, requestId, 'dog', act.frame, sit.width, sit.height)
+      if (act.line !== lastShowLine) {
+        lastShowLine = act.line
+        $.ui.invalidate('ui.render')
+      }
+      return
+    }
+    lastShowLine = ''
+    // the show is over: it ends sitting, so the animation picks up from a sit
+    for (const id of [...anims.keys()]) anims.set(id, startAnim('idle', now))
+    await update($, show, () => null)
+    await feel($, { kind: 'say', pose: 'happy', line: showFrame(playing, now - 1, set, sit)?.line ?? '' })
+    return
   }
   const sleepAfter = isNight(new Date(now).getHours()) ? NIGHT_SLEEP_MS : undefined
   const m = await read($, mood)

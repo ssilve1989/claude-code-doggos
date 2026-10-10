@@ -270,3 +270,51 @@ test('the pane labels settled pups with their task, and the desktop counts them'
   const desktop = await $.ui.mount({ ...band(), surface: 'desktop' })
   expect(await desktop.find({ type: 'Text', text: /\(\+2 pups\)/ })).toBeDefined()
 })
+
+test('fetch plays in the band, ends, and counts the ball', async ($, on) => {
+  const { store, clock } = engine(on)
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
+  await $.command.run(doggo('fetch'))
+  expect(await ui.find({ type: 'Text', text: 'go get it!' })).toBeDefined()
+  expect(store.get('balls')).toBe(1)
+  await clock.advance(1_500)
+  expect(await ui.find({ type: 'Text', text: 'fetching!!' })).toBeDefined()
+  await clock.advance(10_000)
+  expect(await ui.find({ type: 'Text', text: /again! again!|there was a SQUIRREL|mine!/ })).toBeDefined()
+  // over: another fetch can start
+  await $.command.run(doggo('fetch'))
+  expect(store.get('balls')).toBe(2)
+})
+
+test('fetch counts toward the bond at most three times a session', async ($, on) => {
+  const { store, clock } = engine(on)
+  await $.session.start(START)
+  const before = Number(store.get('bond'))
+  for (let i = 0; i < 5; i++) {
+    await $.command.run(doggo('fetch'))
+    await clock.advance(10_000)
+  }
+  expect(store.get('balls')).toBe(5)
+  expect(store.get('bond')).toBe(before + 3)
+})
+
+test('a locked trick gets a puzzled tilt; a known one plays', async ($, on) => {
+  engine(on)
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
+  await $.command.run(doggo('trick roll'))
+  expect(await ui.find({ type: 'Text', text: "don't know that one yet… (best friend)" })).toBeDefined()
+  await $.command.run(doggo('trick sit'))
+  expect(await ui.find({ type: 'Text', text: 'sit pretty!' })).toBeDefined()
+  expect((await $.command.run(doggo('trick juggle'))).text).toBe('tricks: sit (and more to learn)')
+})
+
+test('with the dog hidden, fetch answers in text and does not get stuck', async ($, on) => {
+  const { store } = engine(on)
+  await $.session.start(START)
+  await $.command.run(doggo('off'))
+  expect((await $.command.run(doggo('fetch'))).text).toMatch(/^🐕 Biscuit: /)
+  await $.command.run(doggo('fetch'))
+  expect(store.get('balls')).toBe(2)
+})

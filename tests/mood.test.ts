@@ -142,3 +142,9 @@ test('a long quiet stretch mid-turn lies the dog down until the next tool call',
   m = step(m, { kind: 'tool', tool: 'Read', target: 'a.ts' }, T0 + LIE_AFTER_MS + 2)
   expect(poseOf(m, T0 + LIE_AFTER_MS + 2)).toBe('sniff')
 })
+
+test('say shows a pose and a line briefly', async () => {
+  const m = step(initialMood(T0), { kind: 'say', pose: 'tilt', line: "don't know that one yet…" }, T0)
+  expect(poseOf(m, T0)).toBe('tilt')
+  expect(m.line).toBe("don't know that one yet…")
+})
