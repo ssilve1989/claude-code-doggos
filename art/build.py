@@ -28,6 +28,9 @@ PALETTE = [
     0xB83A2E,   # 9 leash
     0xD4E83C,   # a tennis ball
     0x8FA32A,   # b tennis ball shadow
+    0x5B3A8C,   # c witch-hat band
+    0x2A2230,   # d witch-hat black
+    0x3BB3D9,   # e party-hat blue
 ]
 
 POSES = ["idle", "excited", "happy", "worried", "tilt", "sleep", "leash", "yawn", "sniff", "dig", "walk",
@@ -44,6 +47,8 @@ class Canvas:
         self.w, self.h = size
         self.im = Image.new("P", size, 0)
         self.d = ImageDraw.Draw(self.im)
+        # (x, top-of-head y, "f" front / "s" side): where an outfit sits on this frame
+        self.head = None
 
     def e(self, cx, cy, rx, ry, c, o=None):
         self.d.ellipse((cx - rx, cy - ry, cx + rx, cy + ry), fill=c, outline=o)
@@ -74,6 +79,7 @@ class Canvas:
                     if 0 <= nx < self.w and 0 <= ny < self.h and src[nx, ny] not in (0, 1):
                         dst[x, y] = 1
                         break
+        out.info["head"] = self.head
         return out
 
 
@@ -115,6 +121,7 @@ def front(eyes="open", mouth="tongue", ears="down", tail=0, tilt=0, dy=0, paws="
 
 
 def head_front(k, c, y, eyes, mouth, ears, tilt=0):
+    k.head = (c, y - 7, "f")
     k.e(c, y, 8, 7, 2)
     k.e(c, y - 5, 4, 2, 3)
     for s in (-1, 1):
@@ -159,6 +166,7 @@ def head_front(k, c, y, eyes, mouth, ears, tilt=0):
 # ----------------------------------------------------------------- big, side
 
 def head_side(k, ox, oy, eyes="open"):
+    k.head = (ox, oy - 6, "s")
     k.e(ox, oy, 6, 6, 2)
     k.e(ox, oy-3, 3, 2, 3)
     k.poly([(ox+3,oy-1),(ox+10,oy),(ox+12,oy+2),(ox+11,oy+5),(ox+5,oy+6),(ox+2,oy+4)], 3)
@@ -392,6 +400,7 @@ def belly_up(eyes="closed", legs="bent", tongue=True):
 def mini_side(step=0):
     """The band dog in side view, facing right: running after the ball."""
     k = Canvas(MINI)
+    k.head = (12, 1, "s")
     k.line(0, 4, 2, 6, 2); k.px(0, 3, 4)
     k.rect(2, 5, 10, 8, 2); k.line(3, 8, 9, 8, 4)
     a = 1 if step else 0
@@ -439,6 +448,55 @@ def mini_show_frames():
     }
 
 
+# ------------------------------------------------------------------- outfits
+
+OUTFITS = ["witch", "santa", "party", "bandana"]
+
+
+def hat_sprites(big):
+    """Each outfit as a small sprite plus where it sits relative to the top of the head."""
+    if big:
+        witch = Canvas((15, 12)); witch.poly([(3,9),(11,9),(9,4),(12,0),(7,2)], 13); witch.rect(0, 9, 14, 10, 13); witch.rect(4, 7, 10, 8, 12)
+        santa = Canvas((15, 10)); santa.poly([(2,7),(11,7),(9,3),(13,1)], 9); santa.rect(1, 7, 12, 9, 8); santa.e(13, 1, 1, 1, 8)
+        party = Canvas((9, 11)); party.poly([(1,10),(7,10),(4,1)], 14); party.line(2, 8, 6, 8, 7); party.line(3, 5, 5, 5, 7); party.e(4, 1, 1, 1, 10)
+        bandana = Canvas((15, 7)); bandana.poly([(0,0),(14,0),(7,6)], 9); bandana.px(4, 1, 8); bandana.px(9, 1, 8); bandana.px(7, 3, 8)
+        sprites = {"witch": witch, "santa": santa, "party": party, "bandana": bandana}
+        neck = 13
+    else:
+        witch = Canvas((7, 5)); witch.poly([(1,3),(5,3),(3,0)], 13); witch.line(0, 4, 6, 4, 13)
+        santa = Canvas((7, 4)); santa.poly([(1,2),(5,2),(5,0)], 9); santa.line(0, 3, 6, 3, 8); santa.px(6, 0, 8)
+        party = Canvas((3, 5)); party.poly([(0,4),(2,4),(1,1)], 14); party.px(1, 0, 10)
+        bandana = Canvas((7, 3)); bandana.poly([(0,0),(6,0),(3,2)], 9)
+        sprites = {"witch": witch, "santa": santa, "party": party, "bandana": bandana}
+        neck = 6
+    out = {}
+    for name, k in sprites.items():
+        im = k.done()
+        w, h = im.size
+        # hats sit on the crown, a little sunk in; the bandana hangs at the neck
+        dy = neck if name == "bandana" else -h + 2
+        side_dx = -3 if name == "bandana" else -1
+        out[name] = (im, dy, side_dx)
+    return out
+
+
+def dress(frame, hat, dy, side_dx):
+    """A frame with the outfit on, the way the runtime composes it (for the preview)."""
+    head = frame.info.get("head")
+    out = frame.copy()
+    if not head:
+        return out
+    x, y, facing = head
+    hx = x - hat.size[0] // 2 + (side_dx if facing == "s" else 0)
+    src, dst = hat.load(), out.load()
+    for j in range(hat.size[1]):
+        for i in range(hat.size[0]):
+            px, py = hx + i, y + dy + j
+            if src[i, j] and 0 <= px < out.size[0] and 0 <= py < out.size[1]:
+                dst[px, py] = src[i, j]
+    return out
+
+
 SHOW_FRAMES = ["side", "run", "runBall", "sitBall", "keepBall", "pretty", "paw", "lie", "belly", "dead", "deadPeek"]
 
 
@@ -468,6 +526,7 @@ def mini(eyes="open", mouth="tongue", ears="down", dy=0, tilt=0, paws=0):
     """Head and shoulders, facing us: 16x12 pixels, 6 terminal rows."""
     k = Canvas(MINI)
     c, y = 8 + tilt, 5 + dy
+    k.head = (c, y - 4, "f")
     k.e(8, 12, 7, 3, 2)
     k.poly([(5,9),(11,9),(10,11),(8,12),(6,11)], 4)
     if paws:
@@ -551,6 +610,10 @@ def mini_poses():
         "lie":     [mini(mouth="tongue", ears="droop", dy=1)],
         "zoomies": [mini(paws=1, mouth="open", ears="up"), mini(mouth="open", ears="up", dy=-1)],
     }
+
+
+def heads(frames):
+    return [list(f.info["head"]) if f.info.get("head") else None for f in frames]
 
 
 def encode(frames, size):
@@ -659,10 +722,12 @@ def main():
         assert list(poses) == POSES, "every size draws every pose"
     sprites = {
         "big": {"width": BIG[0], "height": BIG[1], "poses": {p: encode(f, BIG) for p, f in big.items()},
-                "stances": big_stances(), "clips": {k: encode(f, BIG) for k, f in big_clips().items()}},
+                "stances": big_stances(), "clips": {k: encode(f, BIG) for k, f in big_clips().items()},
+                "heads": {p: heads(f) for p, f in big.items()}, "clipHeads": {k: heads(f) for k, f in big_clips().items()}},
         # the mini dog is always facing us, so every pose shares one stance
         "mini": {"width": MINI[0], "height": MINI[1], "poses": {p: encode(f, MINI) for p, f in small.items()},
-                 "stances": {p: "sit" for p in POSES}, "clips": {}},
+                 "stances": {p: "sit" for p in POSES}, "clips": {}, "heads": {p: heads(f) for p, f in small.items()},
+                 "clipHeads": {}},
     }
     palette = [0x01000000 if c is None else c for c in PALETTE]
     pups, mini_pups = pup_poses(), mini_pup_poses()
@@ -672,19 +737,25 @@ def main():
         "big": {"width": PUP[0], "height": PUP[1], "poses": {p: encode(f, PUP) for p, f in pups.items()}},
         "mini": {"width": PUP_MINI[0], "height": PUP_MINI[1], "poses": {p: encode(f, PUP_MINI) for p, f in mini_pups.items()}},
     }
+    outfits = {}
+    for name, is_big in (("big", True), ("mini", False)):
+        outfits[name] = {o: {"width": im.size[0], "height": im.size[1], "frame": encode([im], im.size)[0], "dy": dy, "sideDx": sdx}
+                         for o, (im, dy, sdx) in hat_sprites(is_big).items()}
     shows = {}
     for name, size, frames, ball_size in (("big", BIG, show_frames(), 5), ("mini", MINI, mini_show_frames(), 2)):
         assert list(frames) == SHOW_FRAMES, "every size draws every show frame"
         b = ball(Image.new("P", (ball_size, ball_size), 0), 0, 0, ball_size)
         shows[name] = {"width": size[0], "height": size[1], "frames": {k: encode(f, size) for k, f in frames.items()},
+                       "heads": {k: heads(f) for k, f in frames.items()},
                        "ball": {"width": ball_size, "height": ball_size, "frame": encode([b], (ball_size, ball_size))[0]}}
     ts = (
         "// GENERATED by art/build.py: do not edit.\n"
-        "import type { PupSprites, ShowSprites, Sprites } from './raster'\n\n"
+        "import type { OutfitSprites, PupSprites, ShowSprites, Sprites } from './raster'\n\n"
         f"export const PALETTE: readonly number[] = {json.dumps(palette)}\n\n"
         f"export const SPRITES: Sprites = {json.dumps(sprites, indent=2)}\n\n"
         f"export const PUPS: PupSprites = {json.dumps(pup_sets, indent=2)}\n\n"
-        f"export const SHOWS: ShowSprites = {json.dumps(shows, indent=2)}\n"
+        f"export const SHOWS: ShowSprites = {json.dumps(shows, indent=2)}\n\n"
+        f"export const OUTFITS: OutfitSprites = {json.dumps(outfits, indent=2)}\n"
     )
     (ROOT / "hooks" / "sprites.ts").write_text(ts)
     preview([("big", BIG, big), ("mini", MINI, small), ("pup", PUP, pups), ("pup mini", PUP_MINI, mini_pups)],

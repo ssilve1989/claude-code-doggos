@@ -2,9 +2,9 @@ import type { AgentInfo, On, SessionMeasureInput, SessionMessage, ToolCallResult
 import { expect, mock, test } from 'claude-code/testing'
 
 /** Stands in for the engine beneath the mod; returns the store so tests can read it. */
-// Local times, so night-owl behaviour does not depend on the machine's timezone
-const AFTERNOON = new Date(2026, 0, 1, 13).getTime()
-const NIGHT = new Date(2026, 0, 1, 1).getTime()
+// Local times on an ordinary day (no outfit), so behaviour doesn't depend on the machine's timezone
+const AFTERNOON = new Date(2026, 2, 10, 13).getTime()
+const NIGHT = new Date(2026, 2, 10, 1).getTime()
 
 function engine(on: On, tool: ToolCallResult = { result: 'ok' }, now = AFTERNOON) {
   const store = new Map<string, unknown>()
@@ -385,4 +385,54 @@ test('no barks by default', async ($, on) => {
   await $.turn.complete(turnDone(61_000))
   await $.command.run(doggo('treat'))
   expect(sounds).toEqual([])
+})
+
+const dogRows = async (ui: { find: (q: { type: string; key: string }) => Promise<{ props: Record<string, unknown> } | undefined> }) =>
+  (await ui.find({ type: 'Raster', key: 'dog' }))?.props.rows
+
+test('a coat is saved and recolours the dog', async ($, on) => {
+  const { store } = engine(on)
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
+  const before = (await ui.find({ type: 'Raster', key: 'dog' }))?.props.cells
+  await $.command.run(doggo('coat red'))
+  expect(store.get('coat')).toBe('red')
+  expect((await ui.find({ type: 'Raster', key: 'dog' }))?.props.cells).not.toBe(before)
+  expect((await $.command.run(doggo('coat purple'))).text).toBe('coats: golden, cream, red')
+})
+
+test('trying on an outfit gives the band dog headroom for the hat', async ($, on) => {
+  engine(on)
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
+  expect(await dogRows(ui)).toBe(6)
+  await $.command.run(doggo('outfit santa'))
+  expect(await dogRows(ui)).toBe(8)
+  await $.command.run(doggo('outfit none'))
+  expect(await dogRows(ui)).toBe(6)
+})
+
+test('the calendar dresses the dog, unless outfits are off', async ($, on) => {
+  engine(on, { result: 'ok' }, new Date(2026, 9, 25, 13).getTime())
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
+  expect(await dogRows(ui)).toBe(8)
+})
+
+test('with outfits off, Halloween is just a day', { options: { outfits: 'off' } }, async ($, on) => {
+  engine(on, { result: 'ok' }, new Date(2026, 9, 25, 13).getTime())
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
+  expect(await dogRows(ui)).toBe(6)
+})
+
+test("on the dog's birthday it says so", async ($, on) => {
+  const { store } = engine(on)
+  store.set('sessions', 12)
+  store.set('firstMet', new Date(2025, 2, 10, 9).getTime())
+  store.set('lastSeen', AFTERNOON - 60_000)
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: "it's my birthday!!" })).toBeDefined()
+  expect(await dogRows(ui)).toBe(8)
 })

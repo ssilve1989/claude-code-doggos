@@ -93,6 +93,8 @@ Options, settable in `/config` (look for the `doggo` rows), or with
 | `barkAfterSeconds` | turns at least this long send a notification | `60` |
 | `breakAfterMinutes` | work streak before the break reminder | `90` |
 | `spinner` | swap Claude's spinner word for the dog's | `true` |
+| `coat` | `golden`, `cream` (English cream) or `red` | `golden` |
+| `outfits` | `auto` dresses up by the calendar, `off` never | `auto` |
 | `recap` | after a turn of 30s or more, a one-line recap in dog voice from Haiku | `false` |
 | `barks` | bark sounds on long turns, fetch and treats (macOS) | `false` |
 | `barkVolume` | 0 to 1 | `0.6` |
@@ -124,6 +126,11 @@ the small one below that.
   its ears if the agent failed) and runs off when it's done. Up to 4 show at
   once, with a `+N` for the rest. In the pane each pup has its task under it.
 
+- **Dress-up days:** a witch hat Oct 24–31, a Santa hat Dec 1–26, a party hat
+  for New Year's and on the dog's birthday (the anniversary of your first
+  session together), and a heart bandana on Valentine's Day. On those days the
+  band dog grows two rows taller to fit its hat.
+
 Changes of pose are animated: the dog stands, sits, turns and lies down
 through in-between frames instead of cutting between poses.
 
@@ -154,6 +161,8 @@ Notifications use your terminal's notification channel (Claude Code's
 | `/doggo trick [name]` | a trick it knows: a random one, or `sit`, `paw`, `roll`, `dead` |
 | `/doggo band` / `pane` / `off` | move or hide the dog |
 | `/doggo name <name>` | rename the dog |
+| `/doggo coat <golden\|cream\|red>` | change coat (saved) |
+| `/doggo outfit <witch\|santa\|party\|bandana\|none\|auto>` | try on an outfit for this session |
 
 Tricks are learned with the bond: *sit pretty* from the start, *paw* as a
 friend, *roll over* as a best friend and *play dead* as a soulmate. Fetch

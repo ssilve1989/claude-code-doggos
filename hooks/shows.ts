@@ -1,8 +1,9 @@
 // Fetch and tricks: short scripted performances, each a timeline of beats. No `$` here.
 import type { FetchOutcome, Show } from '../types'
 import { CLIP_MS } from './animator'
+import { hatLayer } from './looks'
 import { compose } from './raster'
-import type { Layer, ShowSet, SpriteSet } from './raster'
+import type { Head, Layer, OutfitSprite, ShowSet, SpriteSet } from './raster'
 
 type Beat = {
   ms: number
@@ -18,6 +19,9 @@ type Beat = {
 }
 
 const RUN_MS = 130
+
+/** An outfit to wear through the show: the hat, the headroom above the dog, and where each frame's head is. */
+export type Wear = { hat: OutfitSprite; pad: number; heads: ReadonlyMap<string, Head | null> }
 
 export function pickOutcome(r: number): FetchOutcome {
   return r < 0.8 ? 'drop' : r < 0.9 ? 'squirrel' : 'keep'
@@ -83,8 +87,12 @@ export function showDuration(show: Show, set: ShowSet, sit: SpriteSet): number {
   return beats(show, set, sit).reduce((sum, b) => sum + b.ms, 0)
 }
 
-/** The show's frame and line at `now`, or null once it has finished. */
-export function showFrame(show: Show, now: number, set: ShowSet, sit: SpriteSet): { frame: string; line: string } | null {
+/** The show's frame, its height and line at `now`, or null once it has finished. */
+export function showFrame(
+  show: Show, now: number, set: ShowSet, sit: SpriteSet, wear?: Wear,
+): { frame: string; line: string; height: number } | null {
+  const pad = wear?.pad ?? 0
+  const height = set.height + pad
   let local = now - show.startedAt
   for (const b of beats(show, set, sit)) {
     if (local >= b.ms) {
@@ -96,13 +104,15 @@ export function showFrame(show: Show, now: number, set: ShowSet, sit: SpriteSet)
     const dog = b.frames[Math.floor(local / b.frameMs) % Math.max(1, b.frames.length)]
     if (dog !== undefined) {
       const x = b.x ? b.x[0] + (b.x[1] - b.x[0]) * t : 0
-      layers.push({ frame: dog, width: set.width, height: set.height, x, y: 0, isMirrored: b.isMirrored })
+      layers.push({ frame: dog, width: set.width, height: set.height, x, y: pad, isMirrored: b.isMirrored })
+      const head = wear?.heads.get(dog)
+      if (wear && head) layers.push(hatLayer(head, wear.hat, x, set.width, b.isMirrored === true, pad))
     }
     if (b.ball) {
       const at = b.ball(t)
-      layers.push({ frame: set.ball.frame, width: set.ball.width, height: set.ball.height, x: at.x, y: Math.round(at.y) })
+      layers.push({ frame: set.ball.frame, width: set.ball.width, height: set.ball.height, x: at.x, y: pad + Math.round(at.y) })
     }
-    return { frame: compose(set.width, set.height, layers), line: b.line }
+    return { frame: compose(set.width, height, layers), line: b.line, height }
   }
   return null
 }

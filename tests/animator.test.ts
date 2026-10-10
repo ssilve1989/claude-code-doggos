@@ -2,6 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { CLIP_MS, frameOf, startAnim } from '../hooks/animator'
 import type { SpriteSet } from '../hooks/raster'
+import { SPRITES } from '../hooks/sprites'
 
 // One-character "frames" keep the expectations readable.
 const POSE_MS = 700 // idle's frame time
@@ -19,6 +20,9 @@ const set: SpriteSet = {
     drowsy: 'sit', pant: 'sit', shake: 'sit', lie: 'lie', zoomies: 'stand',
   },
   clips: { 'stand-sit': ['a', 'b', 'c'], 'sit-stand': ['c', 'b', 'a'], 'sit-lie': ['x'], 'lie-sit': ['x'] },
+  // the animator never looks at heads
+  heads: SPRITES.big.heads,
+  clipHeads: {},
 }
 
 function play(anim = startAnim('idle', 0)) {

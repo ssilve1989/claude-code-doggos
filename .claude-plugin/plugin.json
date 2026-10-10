@@ -60,6 +60,27 @@
       "title": "Bark volume",
       "description": "From 0 (silent) to 1",
       "default": 0.6
+    },
+    "coat": {
+      "type": "string",
+      "title": "Coat",
+      "description": "golden, cream (English cream) or red",
+      "default": "golden",
+      "options": [
+        "golden",
+        "cream",
+        "red"
+      ]
+    },
+    "outfits": {
+      "type": "string",
+      "title": "Seasonal outfits",
+      "description": "auto: dress up for Halloween, Christmas, New Year, Valentine's and the dog's birthday; off: never",
+      "default": "auto",
+      "options": [
+        "auto",
+        "off"
+      ]
     }
   }
 }

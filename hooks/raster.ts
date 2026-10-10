@@ -1,7 +1,7 @@
 // Turns a sprite frame (one base-36 palette index per pixel) into Raster cells:
 // two pixels per terminal cell, top as the ▀ glyph's colour, bottom as its background.
 
-import type { Pose } from '../types'
+import type { Outfit, Pose } from '../types'
 import type { PupPose } from './pack'
 
 export type Stance = 'sit' | 'stand' | 'lie'
@@ -14,7 +14,16 @@ export type SpriteSet = {
   stances: Record<Pose, Stance>
   /** In-between frames for a stance change, keyed `from-to` (e.g. `stand-sit`). */
   clips: Partial<Record<string, readonly string[]>>
+  /** Where the head is in each frame of `poses`, for outfits. */
+  heads: Record<Pose, readonly (Head | null)[]>
+  clipHeads: Partial<Record<string, readonly (Head | null)[]>>
 }
+
+/** The top-centre of the head in a frame, and whether it faces us (`f`) or right (`s`). */
+export type Head = readonly [number, number, 'f' | 's']
+
+export type OutfitSprite = { width: number; height: number; frame: string; dy: number; sideDx: number }
+export type OutfitSprites = { big: Record<Outfit, OutfitSprite>; mini: Record<Outfit, OutfitSprite> }
 export type Sprites = { big: SpriteSet; mini: SpriteSet }
 
 export type PupSet = { width: number; height: number; poses: Record<PupPose, readonly string[]> }
@@ -26,6 +35,7 @@ export type ShowSet = {
   width: number
   height: number
   frames: Record<ShowFrame, readonly string[]>
+  heads: Record<ShowFrame, readonly (Head | null)[]>
   ball: { width: number; height: number; frame: string }
 }
 export type ShowSprites = { big: ShowSet; mini: ShowSet }

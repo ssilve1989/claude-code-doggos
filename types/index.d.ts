@@ -48,6 +48,9 @@ export type Pup = {
   fromSlot: number | null
 }
 
+export type Coat = 'golden' | 'cream' | 'red'
+export type Outfit = 'witch' | 'santa' | 'party' | 'bandana'
+
 export type TrickName = 'sit' | 'paw' | 'roll' | 'dead'
 export type FetchOutcome = 'drop' | 'squirrel' | 'keep'
 /** A short scripted performance that takes over the dog's drawing until it ends. */

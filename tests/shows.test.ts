@@ -1,7 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 
+import { HEADROOM, headIndex, withShowHeads } from '../hooks/looks'
 import { pickOutcome, showDuration, showFrame } from '../hooks/shows'
-import { SHOWS, SPRITES } from '../hooks/sprites'
+import { OUTFITS, SHOWS, SPRITES } from '../hooks/sprites'
 import type { Show } from '../types'
 
 const T0 = 1_000_000
@@ -67,4 +68,17 @@ test('fetch outcomes: mostly a drop, sometimes a squirrel or keep-away', async (
   expect(pickOutcome(0.79)).toBe('drop')
   expect(pickOutcome(0.85)).toBe('squirrel')
   expect(pickOutcome(0.95)).toBe('keep')
+})
+
+test('an outfit rides along through a show, in a taller frame', async () => {
+  const heads = withShowHeads(headIndex(SPRITES.big), SHOWS.big)
+  const wear = { hat: OUTFITS.big.santa, pad: HEADROOM.big, heads }
+  const show: Show = { kind: 'paw', outcome: 'drop', startedAt: T0 }
+  const plain = showFrame(show, T0 + 100, SHOWS.big, SPRITES.big)
+  const dressedUp = showFrame(show, T0 + 100, SHOWS.big, SPRITES.big, wear)
+  expect(dressedUp?.height).toBe(SHOWS.big.height + HEADROOM.big)
+  expect(dressedUp?.frame.length).toBe(SHOWS.big.width * (SHOWS.big.height + HEADROOM.big))
+  // the Santa hat's red (palette 9) appears only in the dressed frame
+  expect(plain?.frame.includes('9')).toBe(false)
+  expect(dressedUp?.frame.includes('9')).toBe(true)
 })

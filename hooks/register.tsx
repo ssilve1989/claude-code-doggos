@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Display, Pose, Stats, TrickName } from '../types'
+import type { Coat, Display, Outfit, Pose, Stats, TrickName } from '../types'
 import { PET_CAP, TREAT_CAP, TRICKS, bondLevel, greeting, isTrick, knownTricks, levelUp, toCount, toDisplay, trickFor } from './bond'
 import { classifyCommand, contextLevel } from './milestones'
 import { initialMood, poseOf, step, tick } from './mood'
@@ -17,7 +17,9 @@ import { cellsOf } from './raster'
 import type { PupSet, SpriteSet } from './raster'
 import { RECAP_SYSTEM, cleanRecap, describeAction, logAction, recapPrompt, shouldRecap } from './recap'
 import { pickOutcome, showFrame } from './shows'
-import { PALETTE, PUPS, SHOWS, SPRITES } from './sprites'
+import type { Wear } from './shows'
+import { HEADROOM, dressed, headIndex, isBirthday, outfitFor, paletteFor, toCoat, toOutfit, withShowHeads } from './looks'
+import { OUTFITS, PALETTE, PUPS, SHOWS, SPRITES } from './sprites'
 
 const PANE = 'doggo'
 const TICK_MS = 100
@@ -26,7 +28,7 @@ const BUBBLE_COLUMNS = 12
 const BAND_SLOT = 10
 const PANE_SLOT = 26
 const POLL_EVERY_TICKS = 10
-const HINT = 'pet | treat | fetch | trick [name] | band | pane | off | name <name>'
+const HINT = 'pet | treat | fetch | trick [name] | coat <golden|cream|red> | outfit <name|none|auto> | band | pane | off | name <name>'
 const USAGE = `usage: /doggo [${HINT}]`
 const FETCH_BOND_CAP = 3
 
@@ -68,6 +70,16 @@ let barkVolume = 0.6
 // What the dog saw this turn, for the recap; and which turn is current, so a late recap can tell it's stale
 let turnLog: string[] = []
 let currentTurnId = ''
+let defaultCoat: Coat = 'golden'
+let palette: readonly number[] = PALETTE
+let isOutfitsAuto = true
+// A session-only choice from /doggo outfit; null follows the calendar
+let outfitOverride: Outfit | 'none' | null = null
+let wearing: Outfit | null = null
+const HEADS = {
+  big: withShowHeads(headIndex(SPRITES.big), SHOWS.big),
+  mini: withShowHeads(headIndex(SPRITES.mini), SHOWS.mini),
+}
 // Approval waits that will bark unless the tool call returns first, by tool_use_id
 const waitBarks = new Map<string, { cancel(): void }>()
 
@@ -78,6 +90,8 @@ export const register: Register = (on, options) => {
   breakAfterMs = positive(options.breakAfterMinutes, 90) * 60_000
   isSpinnerOn = options.spinner !== false
   isRecapOn = options.recap === true
+  defaultCoat = toCoat(options.coat) ?? 'golden'
+  isOutfitsAuto = options.outfits !== 'off'
   isBarksOn = options.barks === true
   barkVolume = typeof options.barkVolume === 'number' ? Math.min(1, Math.max(0, options.barkVolume)) : 0.6
 
@@ -224,6 +238,24 @@ export const register: Register = (on, options) => {
         await play($, name)
         return reply($)
       }
+      case 'coat': {
+        const coat = toCoat(rest[0])
+        if (!coat) return { text: 'coats: golden, cream, red' }
+        await $.store.set('coat', coat)
+        setCoat($, coat)
+        await feel($, { kind: 'say', pose: 'happy', line: `*shakes out a ${coat} coat*` })
+        return reply($)
+      }
+      case 'outfit': {
+        const choice = rest[0] ?? ''
+        const outfit = toOutfit(choice)
+        if (choice === 'auto') outfitOverride = null
+        else if (choice === 'none') outfitOverride = 'none'
+        else if (outfit) outfitOverride = outfit
+        else return { text: 'outfits: witch, santa, party, bandana, none, auto' }
+        await refreshLooks($)
+        return reply($)
+      }
       case 'name': {
         const name = rest.join(' ').trim()
         if (!name) return { text: USAGE }
@@ -260,7 +292,7 @@ export const register: Register = (on, options) => {
     const now = await $.clock.now()
     const pose = poseOf(m, now)
     const set = SPRITES.mini
-    const rows = Math.ceil(set.height / 2)
+    const rows = Math.ceil((set.height + (wearing ? HEADROOM.mini : 0)) / 2)
     const pups = await read($, pack)
     if (e.surface !== 'terminal' || e.props.bodyColumns < set.width || e.props.maxRows < rows) {
       const { Text } = $.ui.resolve(e)
@@ -269,8 +301,8 @@ export const register: Register = (on, options) => {
     const { Box, Raster, Text } = $.ui.resolve(e)
     bandId = e.requestId
     const playing = await read($, show)
-    const act = playing ? showFrame(playing, now, SHOWS.mini, set) : null
-    const r = act ? cellsOf(act.frame, set.width, set.height, PALETTE) : drawn(bandId, set, pose, now)
+    const act = playing ? showFrame(playing, now, SHOWS.mini, set, wearFor(set)) : null
+    const r = act ? cellsOf(act.frame, set.width, act.height, palette) : drawn(bandId, set, pose, now)
     const hasBubble = e.props.bodyColumns >= set.width + 1 + BUBBLE_COLUMNS
     // the pack only gets what the bubble can spare, so it is the first thing a narrow band drops
     const spare = e.props.bodyColumns - set.width - 1 - BUBBLE_COLUMNS - 4
@@ -278,7 +310,7 @@ export const register: Register = (on, options) => {
     const view = pups.length > 0 && slots > 0 ? packView(bandId, pups, now, PUPS.mini, slots, BAND_SLOT, set.height) : null
     if (!view) packViews.delete(bandId)
     return (
-      <Box flexDirection="row" columnGap={1}>
+      <Box flexDirection="row" columnGap={1} alignItems="flex-end">
         <Raster key="dog" columns={r.columns} rows={r.rows} cells={r.cells} />
         {hasBubble && (
           <Box flexDirection="column" justifyContent="center" flexGrow={1}>
@@ -302,7 +334,8 @@ export const register: Register = (on, options) => {
     const since = s.firstMet ? new Date(s.firstMet).toISOString().slice(0, 10) : 'today'
     const playing = await read($, show)
     const isBig = e.props.bodyColumns >= SPRITES.big.width
-    const paneAct = playing ? showFrame(playing, now, isBig ? SHOWS.big : SHOWS.mini, isBig ? SPRITES.big : SPRITES.mini) : null
+    const paneSit = isBig ? SPRITES.big : SPRITES.mini
+    const paneAct = playing ? showFrame(playing, now, isBig ? SHOWS.big : SHOWS.mini, paneSit, wearFor(paneSit)) : null
     const { Box, Button, Text } = $.ui.resolve(e)
     const info = (
       <Box flexDirection="column">
@@ -323,7 +356,7 @@ export const register: Register = (on, options) => {
     if (e.surface !== 'terminal') return info
     const { Raster } = $.ui.resolve(e)
     paneSet = isBig ? SPRITES.big : SPRITES.mini
-    const r = paneAct ? cellsOf(paneAct.frame, paneSet.width, paneSet.height, PALETTE) : drawn(PANE, paneSet, poseOf(m, now), now)
+    const r = paneAct ? cellsOf(paneAct.frame, paneSet.width, paneAct.height, palette) : drawn(PANE, paneSet, poseOf(m, now), now)
     const pups = await read($, pack)
     const slots = Math.min(MAX_SLOTS, Math.floor(e.props.bodyColumns / PANE_SLOT))
     const view = pups.length > 0 && slots > 0 ? packView(PANE, pups, now, PUPS.big, slots, PANE_SLOT, PUPS.big.height) : null
@@ -359,6 +392,7 @@ export const register: Register = (on, options) => {
 async function wakeUp($: EngineInterface): Promise<void> {
   const now = await $.clock.now()
   await update($, mood, () => initialMood(now))
+  setCoat($, toCoat(await $.store.get('coat')) ?? defaultCoat)
   const shown = toDisplay(await $.store.get('display')) ?? defaultDisplay
   await update($, display, () => shown)
   if (!(await read($, isCounted))) {
@@ -368,11 +402,14 @@ async function wakeUp($: EngineInterface): Promise<void> {
     await bump($, 'bond', 1)
     if (!before.firstMet) await $.store.set('firstMet', now)
     await $.store.set('lastSeen', now)
-    const hello = greeting(before.name, before.sessions, before.lastSeen, now)
+    const hello = isBirthday(new Date(now), before.firstMet)
+      ? { line: "it's my birthday!!", isExcited: true }
+      : greeting(before.name, before.sessions, before.lastSeen, now)
     await feel($, { kind: 'greet', ...hello })
     celebrate($, before.name, levelUp(before.bond, before.bond + 1))
   }
   await refreshStats($)
+  await refreshLooks($)
   if (shown === 'pane') await $.ui.open({ id: PANE, title: (await read($, stats)).name })
 }
 
@@ -493,6 +530,7 @@ async function onTick($: EngineInterface): Promise<void> {
   if (shown === 'off') return
   const now = await $.clock.now()
   ticks += 1
+  if (ticks % POLL_EVERY_TICKS === 0) await refreshLooks($)
   const seen = ticks % POLL_EVERY_TICKS === 0 ? await pollAgents($) : null
   const pups = await read($, pack)
   const moved = reconcile(pups, seen, now)
@@ -508,9 +546,9 @@ async function onTick($: EngineInterface): Promise<void> {
     const sit = isBand ? SPRITES.mini : paneSet
     const set = isBand || paneSet !== SPRITES.big ? SHOWS.mini : SHOWS.big
     const requestId = isBand ? bandId : PANE
-    const act = showFrame(playing, now, set, sit)
+    const act = showFrame(playing, now, set, sit, wearFor(sit))
     if (act) {
-      if (requestId !== null) await repaint($, requestId, requestId, 'dog', act.frame, sit.width, sit.height)
+      if (requestId !== null) await repaint($, requestId, requestId, 'dog', act.frame, sit.width, act.height)
       if (act.line !== lastShowLine) {
         lastShowLine = act.line
         $.ui.invalidate('ui.render')
@@ -521,7 +559,7 @@ async function onTick($: EngineInterface): Promise<void> {
     // the show is over: it ends sitting, so the animation picks up from a sit
     for (const id of [...anims.keys()]) anims.set(id, startAnim('idle', now))
     await update($, show, () => null)
-    await feel($, { kind: 'say', pose: 'happy', line: showFrame(playing, now - 1, set, sit)?.line ?? '' })
+    await feel($, { kind: 'say', pose: 'happy', line: showFrame(playing, now - 1, set, sit, wearFor(sit))?.line ?? '' })
     return
   }
   const sleepAfter = isNight(new Date(now).getHours()) ? NIGHT_SLEEP_MS : undefined
@@ -544,7 +582,8 @@ async function onTick($: EngineInterface): Promise<void> {
 
 /** Repaints a mounted Raster when its frame has moved on, without a render pass. */
 async function animate($: EngineInterface, requestId: string, set: SpriteSet, pose: Pose, now: number): Promise<void> {
-  await repaint($, requestId, requestId, 'dog', advanceAnim(requestId, set, pose, now), set.width, set.height)
+  const d = dogFrame(set, advanceAnim(requestId, set, pose, now))
+  await repaint($, requestId, requestId, 'dog', d.frame, set.width, d.height)
 }
 
 /** Blits a frame to a mounted Raster unless it is already showing; `cache` names the Raster. */
@@ -557,7 +596,7 @@ async function repaint(
   const w = width ?? view?.geo.areaWidth ?? 0
   const h = height ?? view?.height ?? 0
   try {
-    const r = cellsOf(frame, w, h, PALETTE)
+    const r = cellsOf(frame, w, h, palette)
     await $.ui.blit({ requestId, key, cells: r.cells, columns: r.columns, rows: r.rows })
   } catch {
     lastBlit.delete(cache) // not mounted right now; try again next tick
@@ -570,7 +609,7 @@ function packView(requestId: string, pups: Parameters<typeof drawPack>[0], now: 
   packViews.set(requestId, { set, geo, height })
   const frame = drawPack(pups, now, set, geo, height)
   lastBlit.set(`${requestId}:pack`, frame)
-  return { cells: cellsOf(frame, geo.areaWidth, height, PALETTE), overflow: layout(pups, now, geo).overflow }
+  return { cells: cellsOf(frame, geo.areaWidth, height, palette), overflow: layout(pups, now, geo).overflow }
 }
 
 async function pollAgents($: EngineInterface): Promise<AgentSeen[] | null> {
@@ -590,9 +629,42 @@ function advanceAnim(requestId: string, set: SpriteSet, pose: Pose, now: number)
 }
 
 function drawn(requestId: string, set: SpriteSet, pose: Pose, now: number) {
-  const frame = advanceAnim(requestId, set, pose, now)
-  lastBlit.set(requestId, frame)
-  return cellsOf(frame, set.width, set.height, PALETTE)
+  const d = dogFrame(set, advanceAnim(requestId, set, pose, now))
+  lastBlit.set(requestId, d.frame)
+  return cellsOf(d.frame, set.width, d.height, palette)
+}
+
+/** The outfit to put on frames of this size today, if any. */
+function wearFor(set: SpriteSet): Wear | undefined {
+  if (!wearing) return undefined
+  const size = set === SPRITES.big ? 'big' : 'mini'
+  return { hat: OUTFITS[size][wearing], pad: HEADROOM[size], heads: HEADS[size] }
+}
+
+/** A dog frame as it should look now: outfit on, with headroom for it. */
+function dogFrame(set: SpriteSet, frame: string): { frame: string; height: number } {
+  const wear = wearFor(set)
+  if (!wear) return { frame, height: set.height }
+  return dressed(frame, set.width, set.height, wear.heads.get(frame) ?? null, wear.hat, wear.pad)
+}
+
+function setCoat($: EngineInterface, coat: Coat): void {
+  const next = paletteFor(coat)
+  if (next.every((c, i) => c === palette[i])) return
+  palette = next
+  lastBlit.clear() // same frames, new colours: everything repaints
+  $.ui.invalidate('ui.render')
+}
+
+/** Puts on (or takes off) today's outfit: a manual choice first, then the calendar. */
+async function refreshLooks($: EngineInterface): Promise<void> {
+  const firstMet = (await read($, stats)).firstMet
+  const now = await $.clock.now()
+  const next = outfitOverride === 'none' ? null : outfitOverride ?? (isOutfitsAuto ? outfitFor(new Date(now), firstMet) : null)
+  if (next === wearing) return
+  wearing = next
+  lastBlit.clear()
+  $.ui.invalidate('ui.render')
 }
 
 /** Asks Haiku for a one-line dog's-eye recap and puts it in the bubble, unless a newer turn has begun. */
