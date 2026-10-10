@@ -1,0 +1,28 @@
+{
+  "name": "doggo",
+  "version": "0.1.0",
+  "description": "A pixel-art golden retriever buddy that reacts to your Claude Code session",
+  "author": {
+    "name": "Steve Silvestri"
+  },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "display": {
+      "type": "string",
+      "title": "Where the dog sits",
+      "description": "band: above the prompt; pane: beside the transcript; off: hidden",
+      "default": "band",
+      "options": [
+        "band",
+        "pane",
+        "off"
+      ]
+    },
+    "name": {
+      "type": "string",
+      "title": "Dog's name",
+      "description": "What your golden retriever is called",
+      "default": "Biscuit"
+    }
+  }
+}
