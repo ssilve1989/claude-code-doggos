@@ -29,6 +29,23 @@ export type Stats = {
   lastSeen: number
 }
 
+export type PupPhase = 'waiting' | 'arriving' | 'here' | 'done' | 'sad' | 'leaving'
+
+/** One subagent's puppy. Positions are worked out from these times, so they never need saving. */
+export type Pup = {
+  id: string
+  label: string
+  phase: PupPhase
+  /** When the current phase started. */
+  since: number
+  slot: number | null
+  /** The slot it is sliding over from, while it scoots. */
+  prevSlot: number | null
+  slotSince: number
+  /** The slot it is running off from, while it leaves. */
+  fromSlot: number | null
+}
+
 /** An unbroken run of activity; `lastRemindedAt` starts at `startedAt`. */
 export type Streak = { startedAt: number; lastActivityAt: number; lastRemindedAt: number }
 
@@ -41,6 +58,7 @@ declare module 'claude-code' {
       isCounted: boolean
       streak: Streak | null
       lastYawnAt: number
+      pack: readonly Pup[]
     }
   }
 }

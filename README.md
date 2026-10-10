@@ -111,6 +111,11 @@ the small one below that.
   go test, cargo test, claude plugin test) set off the zoomies; failing ones
   get sad ears. A successful `git commit` or `git push` is celebrated.
 
+- **The pack:** every subagent or teammate Claude starts brings a puppy. It
+  runs in from the right and sits while its agent works, then wags (or droops
+  its ears if the agent failed) and runs off when it's done. Up to 4 show at
+  once, with a `+N` for the rest. In the pane each pup has its task under it.
+
 Changes of pose are animated: the dog stands, sits, turns and lies down
 through in-between frames instead of cutting between poses.
 

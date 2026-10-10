@@ -1,4 +1,4 @@
-import type { On, SessionMeasureInput, SessionMessage, ToolCallResult } from 'claude-code'
+import type { AgentInfo, On, SessionMeasureInput, SessionMessage, ToolCallResult } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
 /** Stands in for the engine beneath the mod; returns the store so tests can read it. */
@@ -9,6 +9,7 @@ const NIGHT = new Date(2026, 0, 1, 1).getTime()
 function engine(on: On, tool: ToolCallResult = { result: 'ok' }, now = AFTERNOON) {
   const store = new Map<string, unknown>()
   const notified: string[] = []
+  const agents: AgentInfo[] = []
   const clock = mock.clock(on, { now })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('store.get', (_$, e) => ({ value: store.get(e.key) }))
@@ -28,8 +29,9 @@ function engine(on: On, tool: ToolCallResult = { result: 'ok' }, now = AFTERNOON
     return { value: { isSent: true, channel: 'terminal_bell' } }
   })
   on('turn.complete', () => ({ text: '' }))
+  on('agent.list', () => ({ value: [...agents] }))
   on('prompt.submit', (_$, e) => ({ text: e.text }))
-  return { store, clock, notified }
+  return { store, clock, notified, agents }
 }
 
 const prompt = (text: string) => ({ text, wait: false, origin: { kind: 'composer' } }) as const
@@ -230,4 +232,41 @@ test('a filling context warns once, and a compaction shakes it off', async ($, o
   expect(await ui.find({ type: 'Text', text: 'getting full in here… /compact?' })).toBeDefined()
   await $.session.compact({ trigger: 'manual', messages: [...summary] })
   expect(await ui.find({ type: 'Text', text: '*shakes off* fresh start!' })).toBeDefined()
+})
+
+const agent = (id: string, status: AgentInfo['status'], description = 'find the auth handler'): AgentInfo =>
+  ({ id, description, type: 'Explore', status })
+
+const pane = { plugin: 'doggo', component: 'Pane', requestId: 'doggo' } as const
+const paneProps = (bodyColumns: number) =>
+  ({ title: 'Biscuit', isFocused: false, bodyColumns, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} }) as const
+
+test('a running subagent brings a pup to the band, and it leaves when the agent is done', async ($, on) => {
+  const { clock, agents } = engine(on)
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
+  expect(await ui.find({ type: 'Raster', key: 'pack' })).toBe(undefined)
+
+  agents.push(agent('a1', 'running'))
+  await clock.advance(1_000)
+  expect(await ui.find({ type: 'Raster', key: 'pack' })).toBeDefined()
+
+  agents[0] = agent('a1', 'completed')
+  await clock.advance(1_000 + 2_000 + 900)
+  expect(await ui.find({ type: 'Raster', key: 'pack' })).toBe(undefined)
+})
+
+test('the pane labels settled pups with their task, and the desktop counts them', async ($, on) => {
+  const { clock, agents } = engine(on)
+  await $.session.start(START)
+  agents.push(agent('a1', 'running', 'find the auth handler'), agent('a2', 'running', 'read the tests'))
+  await clock.advance(2_000)
+
+  const wide = await $.ui.mount({ ...pane, props: paneProps(80), surface: 'terminal' })
+  expect(await wide.find({ type: 'Raster', key: 'pack' })).toBeDefined()
+  expect(await wide.find({ type: 'Text', text: 'find the auth handler' })).toBeDefined()
+  expect(await wide.find({ type: 'Text', text: 'read the tests' })).toBeDefined()
+
+  const desktop = await $.ui.mount({ ...band(), surface: 'desktop' })
+  expect(await desktop.find({ type: 'Text', text: /\(\+2 pups\)/ })).toBeDefined()
 })

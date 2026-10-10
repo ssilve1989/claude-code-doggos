@@ -5,6 +5,8 @@ import type { Display, Pose, Stats } from '../types'
 import { PET_CAP, TREAT_CAP, bondLevel, greeting, levelUp, toCount, toDisplay } from './bond'
 import { classifyCommand, contextLevel } from './milestones'
 import { initialMood, poseOf, step, tick } from './mood'
+import { MAX_SLOTS, drawPack, layout, reconcile } from './pack'
+import type { AgentSeen, Geometry } from './pack'
 import type { DogEvent } from './mood'
 import {
   NIGHT_SLEEP_MS, WAIT_BARK_MS, breakDue, formatStreak, isNight, noteActivity, remind, shouldBark, spinnerWord, yawnDue,
@@ -12,13 +14,16 @@ import {
 import { startAnim, frameOf } from './animator'
 import type { Anim } from './animator'
 import { cellsOf } from './raster'
-import type { SpriteSet } from './raster'
-import { PALETTE, SPRITES } from './sprites'
+import type { PupSet, SpriteSet } from './raster'
+import { PALETTE, PUPS, SPRITES } from './sprites'
 
 const PANE = 'doggo'
 const TICK_MS = 100
 const FLUSH_MS = 30_000
 const BUBBLE_COLUMNS = 12
+const BAND_SLOT = 10
+const PANE_SLOT = 26
+const POLL_EVERY_TICKS = 10
 const USAGE = 'usage: /doggo [pet | treat | band | pane | off | name <name>]'
 
 const mood = atom({ plugin: 'doggo', key: 'mood' } as const, initialMood(0))
@@ -29,6 +34,7 @@ const display = atom({ plugin: 'doggo', key: 'display' } as const, 'band')
 const isCounted = atom({ plugin: 'doggo', key: 'isCounted' } as const, false)
 const streak = atom({ plugin: 'doggo', key: 'streak' } as const, null)
 const lastYawnAt = atom({ plugin: 'doggo', key: 'lastYawnAt' } as const, 0)
+const pack = atom({ plugin: 'doggo', key: 'pack' } as const, [])
 
 type CountKey = 'bond' | 'treats' | 'pets' | 'sessions' | 'fetched'
 
@@ -42,6 +48,9 @@ let bandId: string | null = null
 let paneSet: SpriteSet = SPRITES.big
 const lastBlit = new Map<string, string>()
 const anims = new Map<string, Anim>()
+// How each drawing last laid out its pack, so the tick can repaint it without a render pass
+const packViews = new Map<string, { set: PupSet; geo: Geometry; height: number }>()
+let ticks = 0
 let barkAfterMs = 60_000
 let breakAfterMs = 90 * 60_000
 let isSpinnerOn = true
@@ -201,22 +210,31 @@ export const register: Register = (on, options) => {
     const pose = poseOf(m, now)
     const set = SPRITES.mini
     const rows = Math.ceil(set.height / 2)
+    const pups = await read($, pack)
     if (e.surface !== 'terminal' || e.props.bodyColumns < set.width || e.props.maxRows < rows) {
       const { Text } = $.ui.resolve(e)
-      return <Text>{textLine(s.name, m.line)}</Text>
+      return <Text>{textLine(s.name, m.line, pups.length)}</Text>
     }
     const { Box, Raster, Text } = $.ui.resolve(e)
     bandId = e.requestId
     const r = drawn(bandId, set, pose, now)
+    const hasBubble = e.props.bodyColumns >= set.width + 1 + BUBBLE_COLUMNS
+    // the pack only gets what the bubble can spare, so it is the first thing a narrow band drops
+    const spare = e.props.bodyColumns - set.width - 1 - BUBBLE_COLUMNS - 4
+    const slots = hasBubble ? Math.min(MAX_SLOTS, Math.max(0, Math.floor(spare / BAND_SLOT))) : 0
+    const view = pups.length > 0 && slots > 0 ? packView(bandId, pups, now, PUPS.mini, slots, BAND_SLOT, set.height) : null
+    if (!view) packViews.delete(bandId)
     return (
       <Box flexDirection="row" columnGap={1}>
         <Raster key="dog" columns={r.columns} rows={r.rows} cells={r.cells} />
-        {e.props.bodyColumns >= set.width + 1 + BUBBLE_COLUMNS && (
-          <Box flexDirection="column" justifyContent="center">
+        {hasBubble && (
+          <Box flexDirection="column" justifyContent="center" flexGrow={1}>
             <Text bold color="#E8AC4C">{s.name}</Text>
             <Text wrap="truncate-end">{m.line}</Text>
           </Box>
         )}
+        {view && <Raster key="pack" columns={view.cells.columns} rows={view.cells.rows} cells={view.cells.cells} />}
+        {view && view.overflow > 0 && <Text dimColor>+{view.overflow}</Text>}
       </Box>
     )
   })
@@ -249,9 +267,31 @@ export const register: Register = (on, options) => {
     const { Raster } = $.ui.resolve(e)
     paneSet = e.props.bodyColumns >= SPRITES.big.width ? SPRITES.big : SPRITES.mini
     const r = drawn(PANE, paneSet, poseOf(m, now), now)
+    const pups = await read($, pack)
+    const slots = Math.min(MAX_SLOTS, Math.floor(e.props.bodyColumns / PANE_SLOT))
+    const view = pups.length > 0 && slots > 0 ? packView(PANE, pups, now, PUPS.big, slots, PANE_SLOT, PUPS.big.height) : null
+    if (!view) packViews.delete(PANE)
+    // labels sit under settled pups only; one moving through a slot would drag its label along
+    const labels = Array.from({ length: slots }, (_, slot) =>
+      pups.find(p => p.slot === slot && (p.phase === 'here' || p.phase === 'done' || p.phase === 'sad'))?.label ?? '')
     return (
       <Box flexDirection="column" rowGap={1}>
         <Raster key="dog" columns={r.columns} rows={r.rows} cells={r.cells} />
+        {view && (
+          <Box flexDirection="column">
+            <Box flexDirection="row" columnGap={1}>
+              <Raster key="pack" columns={view.cells.columns} rows={view.cells.rows} cells={view.cells.cells} />
+              {view.overflow > 0 && <Text dimColor>+{view.overflow}</Text>}
+            </Box>
+            <Box flexDirection="row">
+              {labels.map((label, slot) => (
+                <Box key={`label-${slot}`} width={PANE_SLOT}>
+                  <Text dimColor wrap="truncate-end">{label || ' '}</Text>
+                </Box>
+              ))}
+            </Box>
+          </Box>
+        )}
         {info}
       </Box>
     )
@@ -367,6 +407,15 @@ async function onTick($: EngineInterface): Promise<void> {
   const shown = await read($, display)
   if (shown === 'off') return
   const now = await $.clock.now()
+  ticks += 1
+  const seen = ticks % POLL_EVERY_TICKS === 0 ? await pollAgents($) : null
+  const pups = await read($, pack)
+  const moved = reconcile(pups, seen, now)
+  if (moved !== pups) await update($, pack, () => moved)
+  for (const [requestId, view] of packViews) {
+    const isShown = (shown === 'band' && requestId === bandId) || (shown === 'pane' && requestId === PANE)
+    if (isShown) await repaint($, `${requestId}:pack`, requestId, 'pack', drawPack(moved, now, view.set, view.geo, view.height))
+  }
   const sleepAfter = isNight(new Date(now).getHours()) ? NIGHT_SLEEP_MS : undefined
   const m = await read($, mood)
   if (tick(m, now, sleepAfter) !== m) {
@@ -387,14 +436,41 @@ async function onTick($: EngineInterface): Promise<void> {
 
 /** Repaints a mounted Raster when its frame has moved on, without a render pass. */
 async function animate($: EngineInterface, requestId: string, set: SpriteSet, pose: Pose, now: number): Promise<void> {
-  const frame = advanceAnim(requestId, set, pose, now)
-  if (lastBlit.get(requestId) === frame) return
-  lastBlit.set(requestId, frame)
+  await repaint($, requestId, requestId, 'dog', advanceAnim(requestId, set, pose, now), set.width, set.height)
+}
+
+/** Blits a frame to a mounted Raster unless it is already showing; `cache` names the Raster. */
+async function repaint(
+  $: EngineInterface, cache: string, requestId: string, key: string, frame: string, width?: number, height?: number,
+): Promise<void> {
+  if (lastBlit.get(cache) === frame) return
+  lastBlit.set(cache, frame)
+  const view = packViews.get(requestId)
+  const w = width ?? view?.geo.areaWidth ?? 0
+  const h = height ?? view?.height ?? 0
   try {
-    const r = cellsOf(frame, set.width, set.height, PALETTE)
-    await $.ui.blit({ requestId, key: 'dog', cells: r.cells, columns: r.columns, rows: r.rows })
+    const r = cellsOf(frame, w, h, PALETTE)
+    await $.ui.blit({ requestId, key, cells: r.cells, columns: r.columns, rows: r.rows })
   } catch {
-    lastBlit.delete(requestId) // not mounted right now; try again next tick
+    lastBlit.delete(cache) // not mounted right now; try again next tick
+  }
+}
+
+/** Lays out a drawing's pack and remembers how, so ticks can repaint it. */
+function packView(requestId: string, pups: Parameters<typeof drawPack>[0], now: number, set: PupSet, slots: number, slotWidth: number, height: number) {
+  const geo: Geometry = { slotWidth, areaWidth: slots * slotWidth, visibleSlots: slots }
+  packViews.set(requestId, { set, geo, height })
+  const frame = drawPack(pups, now, set, geo, height)
+  lastBlit.set(`${requestId}:pack`, frame)
+  return { cells: cellsOf(frame, geo.areaWidth, height, PALETTE), overflow: layout(pups, now, geo).overflow }
+}
+
+async function pollAgents($: EngineInterface): Promise<AgentSeen[] | null> {
+  try {
+    const agents = await $.agent.list()
+    return agents.map(a => ({ id: a.id, label: a.description || a.name || a.type, status: a.status }))
+  } catch {
+    return null // skip this poll; the pack keeps moving on time alone
   }
 }
 
@@ -443,8 +519,8 @@ function fieldOf(e: object, key: string): string {
   return typeof value === 'string' ? value : ''
 }
 
-function textLine(name: string, line: string): string {
-  return `🐕 ${name}${line ? ': ' + line : ''}`
+function textLine(name: string, line: string, pups = 0): string {
+  return `🐕 ${name}${pups > 0 ? ` (+${pups} pup${pups === 1 ? '' : 's'})` : ''}${line ? ': ' + line : ''}`
 }
 
 function grouped(n: number): string {

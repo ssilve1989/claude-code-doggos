@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { DEFAULT_COLOR, cellsOf } from '../hooks/raster'
+import { DEFAULT_COLOR, cellsOf, compose } from '../hooks/raster'
 
 const PALETTE = [DEFAULT_COLOR, 0x111111, 0x222222]
 
@@ -27,4 +27,16 @@ test('an odd pixel height leaves the last bottom half empty', async () => {
   const r = cellsOf('1' + '2' + '1', 1, 3, PALETTE)
   expect(r.rows).toBe(2)
   expect(words(r.cells)).toEqual([0x2580, 0x111111, 0x222222, 0x2580, 0x111111, DEFAULT_COLOR])
+})
+
+test('compose stamps frames onto a transparent canvas, clipped and optionally mirrored', async () => {
+  // a 2x1 sprite: left pixel 1, right pixel 2
+  const sprite = { frame: '12', width: 2, height: 1 }
+  expect(compose(4, 1, [{ ...sprite, x: 1, y: 0 }])).toBe('0120')
+  expect(compose(4, 1, [{ ...sprite, x: 1, y: 0, isMirrored: true }])).toBe('0210')
+  // off the right edge: clipped, not wrapped
+  expect(compose(4, 1, [{ ...sprite, x: 3, y: 0 }])).toBe('0001')
+  // later layers win, but their transparent pixels don't erase
+  expect(compose(3, 1, [{ ...sprite, x: 0, y: 0 }, { frame: '03', width: 2, height: 1, x: 0, y: 0 }])).toBe('130')
+  expect(compose(2, 2, [{ frame: '1', width: 1, height: 1, x: 1, y: 1 }])).toBe('0001')
 })

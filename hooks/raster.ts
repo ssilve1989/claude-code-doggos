@@ -2,6 +2,7 @@
 // two pixels per terminal cell, top as the ▀ glyph's colour, bottom as its background.
 
 import type { Pose } from '../types'
+import type { PupPose } from './pack'
 
 export type Stance = 'sit' | 'stand' | 'lie'
 
@@ -15,6 +16,11 @@ export type SpriteSet = {
   clips: Partial<Record<string, readonly string[]>>
 }
 export type Sprites = { big: SpriteSet; mini: SpriteSet }
+
+export type PupSet = { width: number; height: number; poses: Record<PupPose, readonly string[]> }
+export type PupSprites = { big: PupSet; mini: PupSet }
+
+export const PUP_FRAME_MS: Record<PupPose, number> = { sit: 900, wag: 160, sad: 1000, run: 110, turn: 150 }
 
 export type Cells = { columns: number; rows: number; cells: string }
 
@@ -49,4 +55,23 @@ export const FRAME_MS: Record<Pose, number> = {
   idle: 700, excited: 200, happy: 180, worried: 900, tilt: 900,
   sleep: 1200, sniff: 400, dig: 220, walk: 260, leash: 500, yawn: 1500,
   drowsy: 1100, pant: 160, shake: 110, lie: 1300, zoomies: 120,
+}
+
+export type Layer = { frame: string; width: number; height: number; x: number; y: number; isMirrored?: boolean }
+
+/** Stamps sprite frames onto one transparent canvas, later layers on top, clipped to its edges. */
+export function compose(width: number, height: number, layers: readonly Layer[]): string {
+  const out = new Array<string>(width * height).fill('0')
+  for (const l of layers) {
+    for (let y = 0; y < l.height; y++) {
+      for (let x = 0; x < l.width; x++) {
+        const px = l.frame[y * l.width + (l.isMirrored ? l.width - 1 - x : x)]
+        const cx = Math.round(l.x) + x
+        const cy = l.y + y
+        if (px === undefined || px === '0' || cx < 0 || cx >= width || cy < 0 || cy >= height) continue
+        out[cy * width + cx] = px
+      }
+    }
+  }
+  return out.join('')
 }
