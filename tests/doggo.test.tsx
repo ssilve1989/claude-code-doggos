@@ -1,4 +1,4 @@
-import type { On, ToolCallResult } from 'claude-code'
+import type { On, SessionMeasureInput, SessionMessage, ToolCallResult } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
 /** Stands in for the engine beneath the mod; returns the store so tests can read it. */
@@ -87,7 +87,7 @@ test('a failed tool call worries the dog', async ($, on) => {
   await $.session.start(START)
   const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
 
-  await $.tool.call({ tool: 'Bash', command: 'npm test' })
+  await $.tool.call({ tool: 'Bash', command: 'cat missing.txt' })
   expect(await ui.find({ type: 'Text', text: 'uh oh…' })).toBeDefined()
 })
 
@@ -200,4 +200,34 @@ test('a long enough work streak brings the leash', { options: { breakAfterMinute
   await $.prompt.submit(prompt('keep going'))
   await clock.advance(30_000)
   expect(await ui.find({ type: 'Text', text: "walk? you've been at it 1m" })).toBeDefined()
+})
+
+test('passing tests set off the zoomies; failing ones get sad ears', async ($, on) => {
+  engine(on)
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
+  await $.tool.call({ tool: 'Bash', command: 'pnpm test' })
+  expect(await ui.find({ type: 'Text', text: 'zoomies!!' })).toBeDefined()
+})
+
+test('a failing test run is sad, not just a generic failure', async ($, on) => {
+  engine(on, { result: 'FAIL', isError: true })
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
+  await $.tool.call({ tool: 'Bash', command: 'cargo test' })
+  expect(await ui.find({ type: 'Text', text: 'tests failed… 🥺' })).toBeDefined()
+})
+
+test('a filling context warns once, and a compaction shakes it off', async ($, on) => {
+  engine(on)
+  const summary: SessionMessage[] = [{ role: 'user', text: 'summary so far', toolUses: [] }]
+  on('session.compact', () => ({ messages: [...summary] }))
+  on('session.measure', (_$, e) => ({ changed: e.changed }))
+  await $.session.start(START)
+  const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
+  const usage = (percent: number): SessionMeasureInput => ({ context: { window: 200_000, percent }, rateLimits: [], changed: ['context'] })
+  await $.session.measure(usage(92))
+  expect(await ui.find({ type: 'Text', text: 'getting full in here… /compact?' })).toBeDefined()
+  await $.session.compact({ trigger: 'manual', messages: [...summary] })
+  expect(await ui.find({ type: 'Text', text: '*shakes off* fresh start!' })).toBeDefined()
 })

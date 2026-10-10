@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { REACTION_MS, SLEEP_AFTER_MS, initialMood, poseOf, step, tick } from '../hooks/mood'
+import { LIE_AFTER_MS, REACTION_MS, SLEEP_AFTER_MS, initialMood, poseOf, step, tick } from '../hooks/mood'
 
 const T0 = 1_000_000
 
@@ -97,4 +97,48 @@ test('tick takes a shorter sleep threshold at night', async () => {
   const m = initialMood(T0)
   expect(tick(m, T0 + 2 * 60_000 + 1, 2 * 60_000).base).toBe('asleep')
   expect(tick(m, T0 + 2 * 60_000 + 1).base).toBe('idle')
+})
+
+test('a filling context makes the idle dog drowsy, then panting with one warning', async () => {
+  let m = initialMood(T0)
+  m = step(m, { kind: 'context', level: 'drowsy' }, T0)
+  expect(poseOf(m, T0)).toBe('drowsy')
+  m = step(m, { kind: 'context', level: 'full' }, T0)
+  expect(poseOf(m, T0)).toBe('pant')
+  expect(m.line).toBe('getting full in here… /compact?')
+  const again = step({ ...m, line: 'x' }, { kind: 'context', level: 'full' }, T0)
+  expect(again.line).toBe('x')
+})
+
+test('compaction shakes off and resets the context level', async () => {
+  const full = step(initialMood(T0), { kind: 'context', level: 'full' }, T0)
+  const m = step(full, { kind: 'compacted' }, T0)
+  expect(poseOf(m, T0)).toBe('shake')
+  expect(m.line).toBe('*shakes off* fresh start!')
+  expect(m.context).toBe('ok')
+})
+
+test('milestones', async () => {
+  const m = step(initialMood(T0), { kind: 'turnStart' }, T0)
+  const cases = [
+    { which: 'test', isOk: true, pose: 'zoomies', line: 'zoomies!!' },
+    { which: 'test', isOk: false, pose: 'worried', line: 'tests failed… 🥺' },
+    { which: 'commit', isOk: true, pose: 'happy', line: 'committed! 🦴' },
+    { which: 'push', isOk: true, pose: 'excited', line: 'shipped it!' },
+    { which: 'commit', isOk: false, pose: 'worried', line: 'uh oh…' },
+  ] as const
+  for (const c of cases) {
+    const r = step(m, { kind: 'milestone', which: c.which, isOk: c.isOk }, T0)
+    expect([c.which, c.isOk, poseOf(r, T0), r.line]).toEqual([c.which, c.isOk, c.pose, c.line])
+  }
+})
+
+test('a long quiet stretch mid-turn lies the dog down until the next tool call', async () => {
+  let m = step(initialMood(T0), { kind: 'turnStart' }, T0)
+  expect(tick(m, T0 + LIE_AFTER_MS - 1) === m).toBe(true)
+  m = tick(m, T0 + LIE_AFTER_MS + 1)
+  expect(poseOf(m, T0 + LIE_AFTER_MS + 1)).toBe('lie')
+  expect(m.line).toBe("I'll wait here…")
+  m = step(m, { kind: 'tool', tool: 'Read', target: 'a.ts' }, T0 + LIE_AFTER_MS + 2)
+  expect(poseOf(m, T0 + LIE_AFTER_MS + 2)).toBe('sniff')
 })

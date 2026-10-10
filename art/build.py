@@ -24,7 +24,8 @@ PALETTE = [
     0xB83A2E,   # 9 leash
 ]
 
-POSES = ["idle", "excited", "happy", "worried", "tilt", "sleep", "leash", "yawn", "sniff", "dig", "walk"]
+POSES = ["idle", "excited", "happy", "worried", "tilt", "sleep", "leash", "yawn", "sniff", "dig", "walk",
+         "drowsy", "pant", "shake", "lie", "zoomies"]
 BIG = (48, 37)
 MINI = (16, 12)
 
@@ -126,6 +127,8 @@ def head_front(k, c, y, eyes, mouth, ears, tilt=0):
         ex = c + s*4
         if eyes == "closed":
             k.line(ex-1, y, ex+1, y, 6)
+        elif eyes == "half":  # heavy lids over the bottom of the eye
+            k.line(ex-1, y - 1, ex+1, y - 1, 5); k.line(ex-1, y, ex+1, y, 6)
         elif eyes == "happy":  # ^ ^
             k.px(ex-1, y, 6); k.px(ex, y - 1, 6); k.px(ex+1, y, 6)
         else:
@@ -228,7 +231,18 @@ def sit_side(tail=0):
 
 
 def big_stances():
-    return {p: ("lie" if p == "sleep" else "stand" if p in ("sniff", "dig", "walk") else "sit") for p in POSES}
+    return {p: ("lie" if p in ("sleep", "lie") else "stand" if p in ("sniff", "dig", "walk", "zoomies") else "sit")
+            for p in POSES}
+
+
+def shaking(direction):
+    """A wet-dog shake: head and tail swung one way, droplets flying off the other."""
+    k = front(tilt=direction, mouth="none", eyes="closed", tail=0 if direction < 0 else 1)
+    d = ImageDraw.Draw(k)
+    side_x = 24 + 13 * -direction
+    for dx, dy in ((0, 6), (3, 2), (-2, 12), (4, 16), (1, 22)):
+        d.point((side_x + dx * -direction, dy), fill=8)
+    return k
 
 
 def big_clips():
@@ -295,6 +309,13 @@ def big_poses():
         "sniff":   [side(head_y=13, head_x=33), side(head_y=14, head_x=33, tail=1)],
         "dig":     [side(head_y=12, head_x=33, paw=1), side(head_y=12, head_x=33, tail=1)],
         "walk":    [side(), side(tail=1, step=1)],
+        "drowsy":  [front(eyes="half", mouth="none", ears="droop"), front(eyes="half", mouth="none", ears="droop"),
+                    front(eyes="closed", mouth="none", ears="droop")],
+        "pant":    [front(mouth="open"), front(mouth="tongue", dy=1)],
+        "shake":   [shaking(-1), shaking(1)],
+        "lie":     [lying(head_y=27, eyes="open", mouth="tongue", ears="down"),
+                    lying(head_y=27, eyes="closed", mouth="tongue", ears="down", breath=1)],
+        "zoomies": [side(head_y=9, tail=1, step=0), side(head_y=8, tail=0, step=1)],
     }
 
 
@@ -312,6 +333,11 @@ def mini_poses():
         "sniff":   busy,
         "dig":     busy,
         "walk":    busy,
+        "drowsy":  [mini(eyes="closed", mouth="none", ears="droop"), mini(mouth="none", ears="droop")],
+        "pant":    [mini(mouth="open"), mini(mouth="tongue", dy=1)],
+        "shake":   [mini(tilt=1, mouth="none", eyes="closed"), mini(tilt=-1, mouth="none", eyes="closed")],
+        "lie":     [mini(mouth="tongue", ears="droop", dy=1)],
+        "zoomies": [mini(paws=1, mouth="open", ears="up"), mini(mouth="open", ears="up", dy=-1)],
     }
 
 

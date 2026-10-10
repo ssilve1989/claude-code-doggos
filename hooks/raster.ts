@@ -48,4 +48,5 @@ export function cellsOf(frame: string, width: number, height: number, palette: r
 export const FRAME_MS: Record<Pose, number> = {
   idle: 700, excited: 200, happy: 180, worried: 900, tilt: 900,
   sleep: 1200, sniff: 400, dig: 220, walk: 260, leash: 500, yawn: 1500,
+  drowsy: 1100, pant: 160, shake: 110, lie: 1300, zoomies: 120,
 }

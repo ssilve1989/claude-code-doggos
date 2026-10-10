@@ -3,6 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Display, Pose, Stats } from '../types'
 import { PET_CAP, TREAT_CAP, bondLevel, greeting, levelUp, toCount, toDisplay } from './bond'
+import { classifyCommand, contextLevel } from './milestones'
 import { initialMood, poseOf, step, tick } from './mood'
 import type { DogEvent } from './mood'
 import {
@@ -104,7 +105,10 @@ export const register: Register = (on, options) => {
     const ran = await next(e)
     cancelWaitBark(e.tool_use_id)
     pendingFetched += 1
-    if (ran.deny === undefined && ran.isError === true) await feel($, { kind: 'toolFailed' })
+    if (ran.deny !== undefined) return ran
+    const milestone = String(e.tool) === 'Bash' && e.agentId === undefined ? classifyCommand(fieldOf(e, 'command')) : null
+    if (milestone) await feel($, { kind: 'milestone', which: milestone, isOk: ran.isError !== true })
+    else if (ran.isError === true) await feel($, { kind: 'toolFailed' })
     return ran
   }).catch(($, e, next) => next(e))
 
@@ -128,6 +132,19 @@ export const register: Register = (on, options) => {
     await feel($, { kind: 'turnComplete' })
     if (shouldBark(e, barkAfterMs)) await bark($, "Claude's done! 🐾")
     return next(e)
+  }).catch(($, e, next) => next(e))
+
+  on('session.measure', async ($, e, next) => {
+    await feel($, { kind: 'context', level: contextLevel(e.context.percent) })
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  on('session.compact', async ($, e, next) => {
+    const done = await next(e)
+    // precompute runs in the background; only a compaction you'd see gets a shake
+    const isSeen = e.agentId === undefined && (e.trigger === 'manual' || e.trigger === 'auto')
+    if (isSeen && done.skip === undefined) await feel($, { kind: 'compacted' })
+    return done
   }).catch(($, e, next) => next(e))
 
   on('command.run', { command: 'doggo' }, async ($, e) => {
@@ -414,10 +431,16 @@ function positive(v: unknown, fallback: number): number {
 
 function targetOf(e: object): string {
   for (const key of ['file_path', 'notebook_path', 'command', 'pattern', 'url', 'query']) {
-    const value = Object.entries(e).find(([k]) => k === key)?.[1]
-    if (typeof value === 'string') return value.split('\n')[0] ?? ''
+    const value = fieldOf(e, key)
+    if (value) return value.split('\n')[0] ?? ''
   }
   return ''
+}
+
+/** A string field of a tool's input, read without assuming which tool it is. */
+function fieldOf(e: object, key: string): string {
+  const value = Object.entries(e).find(([k]) => k === key)?.[1]
+  return typeof value === 'string' ? value : ''
 }
 
 function textLine(name: string, line: string): string {

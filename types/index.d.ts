@@ -1,5 +1,8 @@
 export type Pose =
   | 'idle' | 'excited' | 'happy' | 'worried' | 'tilt' | 'sleep' | 'sniff' | 'dig' | 'walk' | 'leash' | 'yawn'
+  | 'drowsy' | 'pant' | 'shake' | 'lie' | 'zoomies'
+
+export type ContextLevel = 'ok' | 'drowsy' | 'full'
 
 export type Display = 'band' | 'pane' | 'off'
 
@@ -11,6 +14,8 @@ export type Mood = {
   reaction: { pose: Pose; until: number } | null
   line: string
   lastActivityAt: number
+  /** How full the context window is, which colours the idle pose. */
+  context: ContextLevel
 }
 
 export type Stats = {

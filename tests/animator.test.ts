@@ -11,10 +11,12 @@ const set: SpriteSet = {
   poses: {
     idle: ['i0', 'i1', 'i2', 'i3'], excited: ['e0', 'e1'], happy: ['h0', 'h1'], worried: ['w0'], tilt: ['t0'],
     sleep: ['s0', 's1'], sniff: ['n0', 'n1'], dig: ['d0', 'd1'], walk: ['k0', 'k1'], leash: ['l0'], yawn: ['y0'],
+    drowsy: ['r0'], pant: ['p0'], shake: ['s0'], lie: ['L0'], zoomies: ['z0', 'z1'],
   },
   stances: {
     idle: 'sit', excited: 'sit', happy: 'sit', worried: 'sit', tilt: 'sit', leash: 'sit', yawn: 'sit',
     sleep: 'lie', sniff: 'stand', dig: 'stand', walk: 'stand',
+    drowsy: 'sit', pant: 'sit', shake: 'sit', lie: 'lie', zoomies: 'stand',
   },
   clips: { 'stand-sit': ['a', 'b', 'c'], 'sit-stand': ['c', 'b', 'a'], 'sit-lie': ['x'], 'lie-sit': ['x'] },
 }

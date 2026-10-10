@@ -101,6 +101,19 @@ The pane opens beside the transcript in a wide fullscreen terminal and above
 the prompt otherwise. It needs 48 columns for the big sprite and falls back to
 the small one below that.
 
+## What it notices
+
+- **Context:** past 70% of the context window the dog gets drowsy; past 90%
+  it pants and suggests `/compact` once. After a compaction it shakes off.
+- **Long waits:** when Claude has been busy for 2 minutes with nothing new to
+  show, the dog lies down to wait.
+- **Milestones:** passing tests (npm/pnpm/yarn/bun test, vitest, jest, pytest,
+  go test, cargo test, claude plugin test) set off the zoomies; failing ones
+  get sad ears. A successful `git commit` or `git push` is celebrated.
+
+Changes of pose are animated: the dog stands, sits, turns and lies down
+through in-between frames instead of cutting between poses.
+
 ## Nudges
 
 - **Done bark:** a turn that runs for `barkAfterSeconds` or more sends a native
