@@ -5,6 +5,9 @@ import type { Display, Pose, Stats } from '../types'
 import { PET_CAP, TREAT_CAP, bondLevel, greeting, levelUp, toCount, toDisplay } from './bond'
 import { initialMood, poseOf, step, tick } from './mood'
 import type { DogEvent } from './mood'
+import {
+  NIGHT_SLEEP_MS, WAIT_BARK_MS, breakDue, formatStreak, isNight, noteActivity, remind, shouldBark, spinnerWord, yawnDue,
+} from './nudges'
 import { cellsOf, frameAt } from './raster'
 import type { SpriteSet } from './raster'
 import { PALETTE, SPRITES } from './sprites'
@@ -21,6 +24,8 @@ const stats = atom({ plugin: 'doggo', key: 'stats' } as const, {
 })
 const display = atom({ plugin: 'doggo', key: 'display' } as const, 'band')
 const isCounted = atom({ plugin: 'doggo', key: 'isCounted' } as const, false)
+const streak = atom({ plugin: 'doggo', key: 'streak' } as const, null)
+const lastYawnAt = atom({ plugin: 'doggo', key: 'lastYawnAt' } as const, 0)
 
 type CountKey = 'bond' | 'treats' | 'pets' | 'sessions' | 'fetched'
 
@@ -33,10 +38,18 @@ let pendingFetched = 0
 let bandId: string | null = null
 let paneSet: SpriteSet = SPRITES.big
 const lastBlit = new Map<string, string>()
+let barkAfterMs = 60_000
+let breakAfterMs = 90 * 60_000
+let isSpinnerOn = true
+// Approval waits that will bark unless the tool call returns first, by tool_use_id
+const waitBarks = new Map<string, { cancel(): void }>()
 
 export const register: Register = (on, options) => {
   defaultName = typeof options.name === 'string' && options.name.trim() ? options.name.trim() : 'Biscuit'
   defaultDisplay = toDisplay(options.display) ?? 'band'
+  barkAfterMs = positive(options.barkAfterSeconds, 60) * 1000
+  breakAfterMs = positive(options.breakAfterMinutes, 90) * 60_000
+  isSpinnerOn = options.spinner !== false
 
   on('session.start', async ($, e, next) => {
     await wakeUp($)
@@ -67,7 +80,14 @@ export const register: Register = (on, options) => {
   })
 
   on('prompt.submit', async ($, e, next) => {
-    await feel($, { kind: 'prompt' })
+    const now = await $.clock.now()
+    await update($, streak, cur => noteActivity(cur, now))
+    if (yawnDue(await read($, lastYawnAt), now, new Date(now).getHours())) {
+      await update($, lastYawnAt, () => now)
+      await feel($, { kind: 'yawn' })
+    } else {
+      await feel($, { kind: 'prompt' })
+    }
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -79,6 +99,7 @@ export const register: Register = (on, options) => {
   on('tool.call', async ($, e, next) => {
     if (e.agentId === undefined) await feel($, { kind: 'tool', tool: String(e.tool), target: targetOf(e) })
     const ran = await next(e)
+    cancelWaitBark(e.tool_use_id)
     pendingFetched += 1
     if (ran.deny === undefined && ran.isError === true) await feel($, { kind: 'toolFailed' })
     return ran
@@ -86,12 +107,23 @@ export const register: Register = (on, options) => {
 
   on('tool.check', async ($, e, next) => {
     const verdict = await next(e)
-    if (verdict.decision === 'ask' && e.agentId === undefined) await feel($, { kind: 'ask' })
+    if (verdict.decision === 'ask' && e.agentId === undefined) {
+      await feel($, { kind: 'ask' })
+      const key = e.tool_use_id ?? ''
+      waitBarks.get(key)?.cancel()
+      waitBarks.set(key, $.clock.after(WAIT_BARK_MS, () => bark($, 'Claude needs you!')))
+    }
     return verdict
   }).catch(($, e, next) => next(e))
 
   on('turn.complete', async ($, e, next) => {
+    // A subagent finishing is not the end of your turn
+    if (e.agentId !== undefined) return next(e)
+    for (const key of [...waitBarks.keys()]) cancelWaitBark(key)
+    const now = await $.clock.now()
+    await update($, streak, cur => noteActivity(cur, now))
     await feel($, { kind: 'turnComplete' })
+    if (shouldBark(e, barkAfterMs)) await bark($, "Claude's done! 🐾")
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -133,6 +165,13 @@ export const register: Register = (on, options) => {
     }
     return next(e)
   }).catch(($, e, next) => next(e))
+
+  on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
+    // The desktop's spinner shows real step descriptions, so it keeps them
+    if (!isSpinnerOn || e.surface !== 'terminal') return next(e)
+    const m = await read($, mood)
+    return next({ ...e, props: { ...e.props, word: spinnerWord(e.props.mode, m.action) } })
+  })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if ((await read($, display)) !== 'band' || e.props.hasSurvey) return next(e)
@@ -308,10 +347,17 @@ async function onTick($: EngineInterface): Promise<void> {
   const shown = await read($, display)
   if (shown === 'off') return
   const now = await $.clock.now()
+  const sleepAfter = isNight(new Date(now).getHours()) ? NIGHT_SLEEP_MS : undefined
   const m = await read($, mood)
-  if (tick(m, now) !== m) {
+  if (tick(m, now, sleepAfter) !== m) {
     // The pose changed: the write redraws every site that reads the mood
-    await update($, mood, cur => tick(cur, now))
+    await update($, mood, cur => tick(cur, now, sleepAfter))
+    return
+  }
+  const run = await read($, streak)
+  if (run !== null && m.base !== 'asleep' && breakDue(run, now, breakAfterMs)) {
+    await update($, streak, () => remind(run, now))
+    await feel($, { kind: 'leash', line: `walk? you've been at it ${formatStreak(now - run.startedAt)}` })
     return
   }
   const pose = poseOf(m, now)
@@ -336,6 +382,24 @@ function drawn(requestId: string, set: SpriteSet, pose: Pose, now: number) {
   const frame = frameAt(set, pose, now)
   lastBlit.set(requestId, frame)
   return cellsOf(frame, set.width, set.height, PALETTE)
+}
+
+async function bark($: EngineInterface, text: string): Promise<void> {
+  try {
+    await $.ui.notify(text, { title: (await read($, stats)).name })
+  } catch {
+    // notifications off or unavailable: the dog on screen still reacts
+  }
+}
+
+function cancelWaitBark(key: string | undefined): void {
+  const k = key ?? ''
+  waitBarks.get(k)?.cancel()
+  waitBarks.delete(k)
+}
+
+function positive(v: unknown, fallback: number): number {
+  return typeof v === 'number' && v > 0 ? v : fallback
 }
 
 function targetOf(e: object): string {

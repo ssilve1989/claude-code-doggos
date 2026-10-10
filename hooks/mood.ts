@@ -11,9 +11,13 @@ export type DogEvent =
   | { kind: 'pet' }
   | { kind: 'treat'; isAccepted: boolean }
   | { kind: 'greet'; line: string; isExcited: boolean }
+  | { kind: 'leash'; line: string }
+  | { kind: 'yawn' }
 
 export const REACTION_MS = 3000
 export const SLEEP_AFTER_MS = 10 * 60 * 1000
+/** Nudges stay up longer than a reaction so you notice them. */
+export const NUDGE_MS = 20_000
 
 export function initialMood(now: number): Mood {
   return { base: 'idle', action: null, reaction: null, line: '', lastActivityAt: now }
@@ -26,7 +30,7 @@ export function step(m: Mood, ev: DogEvent, now: number): Mood {
 }
 
 function apply(m: Mood, ev: DogEvent, now: number): Mood {
-  const react = (pose: Pose, line: string): Mood => ({ ...m, reaction: { pose, until: now + REACTION_MS }, line })
+  const react = (pose: Pose, line: string, ms = REACTION_MS): Mood => ({ ...m, reaction: { pose, until: now + ms }, line })
   switch (ev.kind) {
     case 'prompt':
       return react('excited', 'ooh, a job!')
@@ -48,6 +52,10 @@ function apply(m: Mood, ev: DogEvent, now: number): Mood {
       return ev.isAccepted ? react('excited', 'nom!') : react('tilt', 'too full… maybe later')
     case 'greet':
       return react(ev.isExcited ? 'excited' : 'happy', ev.line)
+    case 'leash':
+      return react('leash', ev.line, NUDGE_MS)
+    case 'yawn':
+      return react('yawn', "it's late… bed?", NUDGE_MS)
   }
 }
 
@@ -73,10 +81,10 @@ function toolAction(tool: string, target: string): [Pose, string] {
 }
 
 /** Expires reactions and puts an idle dog to sleep; returns `m` itself when nothing changed. */
-export function tick(m: Mood, now: number): Mood {
+export function tick(m: Mood, now: number, sleepAfterMs = SLEEP_AFTER_MS): Mood {
   let out = m
   if (out.reaction && now >= out.reaction.until) out = { ...out, reaction: null }
-  if (out.base === 'idle' && now - out.lastActivityAt > SLEEP_AFTER_MS) {
+  if (out.base === 'idle' && now - out.lastActivityAt > sleepAfterMs) {
     out = { ...out, base: 'asleep', action: null, line: 'zzz' }
   }
   return out

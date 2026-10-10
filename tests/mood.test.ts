@@ -80,3 +80,21 @@ test('pets and treats react', async () => {
   expect(poseOf(full, T0)).toBe('tilt')
   expect(full.line).toBe('too full… maybe later')
 })
+
+test('the leash and yawn nudges show their poses', async () => {
+  const m = initialMood(T0)
+  const leash = step(m, { kind: 'leash', line: "walk? you've been at it 1h30" }, T0)
+  expect(poseOf(leash, T0)).toBe('leash')
+  expect(leash.line).toBe("walk? you've been at it 1h30")
+  // a reminder stays up long enough to notice
+  expect(poseOf(tick(leash, T0 + REACTION_MS + 1), T0 + REACTION_MS + 1)).toBe('leash')
+  const yawn = step(m, { kind: 'yawn' }, T0)
+  expect(poseOf(yawn, T0)).toBe('yawn')
+  expect(yawn.line).toBe("it's late… bed?")
+})
+
+test('tick takes a shorter sleep threshold at night', async () => {
+  const m = initialMood(T0)
+  expect(tick(m, T0 + 2 * 60_000 + 1, 2 * 60_000).base).toBe('asleep')
+  expect(tick(m, T0 + 2 * 60_000 + 1).base).toBe('idle')
+})

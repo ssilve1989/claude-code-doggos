@@ -1,4 +1,5 @@
-export type Pose = 'idle' | 'excited' | 'happy' | 'worried' | 'tilt' | 'sleep' | 'sniff' | 'dig' | 'walk'
+export type Pose =
+  | 'idle' | 'excited' | 'happy' | 'worried' | 'tilt' | 'sleep' | 'sniff' | 'dig' | 'walk' | 'leash' | 'yawn'
 
 export type Display = 'band' | 'pane' | 'off'
 
@@ -23,8 +24,18 @@ export type Stats = {
   lastSeen: number
 }
 
+/** An unbroken run of activity; `lastRemindedAt` starts at `startedAt`. */
+export type Streak = { startedAt: number; lastActivityAt: number; lastRemindedAt: number }
+
 declare module 'claude-code' {
   interface PluginState {
-    doggo: { mood: Mood; stats: Stats; display: Display; isCounted: boolean }
+    doggo: {
+      mood: Mood
+      stats: Stats
+      display: Display
+      isCounted: boolean
+      streak: Streak | null
+      lastYawnAt: number
+    }
   }
 }

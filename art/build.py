@@ -21,9 +21,10 @@ PALETTE = [
     0x180E08,   # 6 eye / nose
     0xE86878,   # 7 tongue
     0xFFFFFF,   # 8 highlight
+    0xB83A2E,   # 9 leash
 ]
 
-POSES = ["idle", "excited", "happy", "worried", "tilt", "sleep", "sniff", "dig", "walk"]
+POSES = ["idle", "excited", "happy", "worried", "tilt", "sleep", "leash", "yawn", "sniff", "dig", "walk"]
 BIG = (48, 37)
 MINI = (16, 12)
 
@@ -87,6 +88,12 @@ def front(eyes="open", mouth="tongue", ears="down", tail=0, tilt=0, dy=0):
     k.line(c-2, 27, c-2, 33, 5); k.line(c+2, 27, c+2, 33, 5)
     k.rect(c-6, 33, c-2, 34, 4); k.rect(c+2, 33, c+6, 34, 4)
     head_front(k, c + tilt, 10 + dy, eyes, mouth, ears, tilt)
+    if mouth == "leash":  # strap from the mouth, hanging down past the right paw
+        y = 10 + dy
+        k.line(c-3, y + 6, c+3, y + 6, 9)
+        k.line(c+3, y + 6, c+7, y + 14, 9)
+        k.line(c+7, y + 14, c+7, y + 23, 9)
+        k.rect(c+6, y + 23, c+8, y + 24, 9)
     return k.done()
 
 
@@ -108,6 +115,8 @@ def head_front(k, c, y, eyes, mouth, ears, tilt=0):
     k.line(c, y + 4, c, y + 5, 5)
     if mouth == "open":
         k.rect(c-2, y + 5, c+2, y + 7, 1); k.rect(c-1, y + 6, c+1, y + 8, 7)
+    elif mouth == "yawn":  # wide and tall, tongue curled at the bottom
+        k.rect(c-3, y + 5, c+3, y + 10, 1); k.rect(c-2, y + 8, c+2, y + 10, 7)
     elif mouth == "tongue":
         k.line(c-3, y + 5, c-1, y + 6, 5); k.line(c+1, y + 6, c+3, y + 5, 5)
         k.rect(c-1, y + 6, c+1, y + 8, 7); k.px(c, y + 8, 1)
@@ -220,6 +229,10 @@ def mini(eyes="open", mouth="tongue", ears="down", dy=0, tilt=0, paws=0):
     k.px(c, y + 1, 6)
     if mouth == "tongue":
         k.px(c, y + 3, 7)
+    elif mouth == "yawn":
+        k.rect(c-1, y + 3, c+1, y + 4, 1); k.px(c, y + 4, 7)
+    elif mouth == "leash":
+        k.line(c-2, y + 3, c+2, y + 3, 9); k.line(c+2, y + 3, c+4, y + 6, 9)
     elif mouth == "open":
         k.rect(c-1, y + 3, c+1, y + 3, 7)
     for s in (-1, 1):
@@ -245,6 +258,8 @@ def big_poses():
         "worried": [front(eyes="sad", mouth="none", ears="droop"), front(eyes="sad", mouth="none", ears="droop", tail=1)],
         "tilt":    [front(tilt=1, mouth="none"), front(tilt=1, mouth="none", eyes="closed")],
         "sleep":   [lying(), lying(breath=1)],
+        "leash":   [front(mouth="leash", ears="up"), front(mouth="leash", ears="up", tail=1, dy=-1)],
+        "yawn":    [front(eyes="closed", mouth="yawn", ears="droop"), front(eyes="closed", mouth="none", ears="droop")],
         "sniff":   [side(head_y=13, head_x=33), side(head_y=14, head_x=33, tail=1)],
         "dig":     [side(head_y=12, head_x=33, paw=1), side(head_y=12, head_x=33, tail=1)],
         "walk":    [side(), side(tail=1, step=1)],
@@ -260,6 +275,8 @@ def mini_poses():
         "worried": [mini(eyes="sad", mouth="none", ears="droop")],
         "tilt":    [mini(tilt=1, mouth="none")],
         "sleep":   [mini(eyes="closed", mouth="none", ears="droop", dy=1)],
+        "leash":   [mini(mouth="leash", ears="up"), mini(mouth="leash", ears="up", dy=-1)],
+        "yawn":    [mini(eyes="closed", mouth="yawn", ears="droop"), mini(eyes="closed", mouth="none", ears="droop")],
         "sniff":   busy,
         "dig":     busy,
         "walk":    busy,

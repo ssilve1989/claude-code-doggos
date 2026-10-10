@@ -24,6 +24,24 @@
       "title": "Dog's name",
       "description": "What your golden retriever is called",
       "default": "Biscuit"
+    },
+    "barkAfterSeconds": {
+      "type": "number",
+      "title": "Bark after (seconds)",
+      "description": "Send a notification when a turn takes at least this long",
+      "default": 60
+    },
+    "breakAfterMinutes": {
+      "type": "number",
+      "title": "Break reminder after (minutes)",
+      "description": "How long a work streak runs before the dog brings its leash",
+      "default": 90
+    },
+    "spinner": {
+      "type": "boolean",
+      "title": "Dog spinner",
+      "description": "Replace Claude's spinner word with what the dog is doing",
+      "default": true
     }
   }
 }

@@ -83,13 +83,16 @@ dog appears above the prompt with a greeting.
 
 ## Setup
 
-Two options, settable in `/config` (look for the `doggo` rows), or with
+Options, settable in `/config` (look for the `doggo` rows), or with
 `/plugin configure doggo@doggos`:
 
 | Option | Values | Default |
 |---|---|---|
 | `display` | `band` (above the prompt), `pane` (beside the transcript), `off` | `band` |
 | `name` | any name | `Biscuit` |
+| `barkAfterSeconds` | turns at least this long send a notification | `60` |
+| `breakAfterMinutes` | work streak before the break reminder | `90` |
+| `spinner` | swap Claude's spinner word for the dog's | `true` |
 
 Changes made with `/doggo band|pane|off` or `/doggo name <name>` are saved
 and take precedence over these options from then on.
@@ -97,6 +100,22 @@ and take precedence over these options from then on.
 The pane opens beside the transcript in a wide fullscreen terminal and above
 the prompt otherwise. It needs 48 columns for the big sprite and falls back to
 the small one below that.
+
+## Nudges
+
+- **Done bark:** a turn that runs for `barkAfterSeconds` or more sends a native
+  notification ("Claude's done! 🐾"). Aborted turns and subagents stay quiet.
+- **Waiting bark:** if Claude has been waiting on your permission for 30
+  seconds, you get "Claude needs you!".
+- **Break reminders:** after `breakAfterMinutes` of steady work (no gap longer
+  than 15 minutes) the dog brings its leash, and again every 30 minutes.
+- **Night owl:** between midnight and 5 am it yawns at your prompts (once an
+  hour) and dozes off after 2 quiet minutes instead of 10.
+- **Dog spinner:** Claude's spinner reads Sniffing, Digging, Fetching,
+  Pondering, Wagging or Woofing. The Desktop app keeps its own.
+
+Notifications use your terminal's notification channel (Claude Code's
+`preferredNotifChannel` setting). If that's off, the dog still reacts on screen.
 
 ## Commands
 
