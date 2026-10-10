@@ -8,12 +8,14 @@ import type { DogEvent } from './mood'
 import {
   NIGHT_SLEEP_MS, WAIT_BARK_MS, breakDue, formatStreak, isNight, noteActivity, remind, shouldBark, spinnerWord, yawnDue,
 } from './nudges'
-import { cellsOf, frameAt } from './raster'
+import { startAnim, frameOf } from './animator'
+import type { Anim } from './animator'
+import { cellsOf } from './raster'
 import type { SpriteSet } from './raster'
 import { PALETTE, SPRITES } from './sprites'
 
 const PANE = 'doggo'
-const TICK_MS = 200
+const TICK_MS = 100
 const FLUSH_MS = 30_000
 const BUBBLE_COLUMNS = 12
 const USAGE = 'usage: /doggo [pet | treat | band | pane | off | name <name>]'
@@ -38,6 +40,7 @@ let pendingFetched = 0
 let bandId: string | null = null
 let paneSet: SpriteSet = SPRITES.big
 const lastBlit = new Map<string, string>()
+const anims = new Map<string, Anim>()
 let barkAfterMs = 60_000
 let breakAfterMs = 90 * 60_000
 let isSpinnerOn = true
@@ -367,7 +370,7 @@ async function onTick($: EngineInterface): Promise<void> {
 
 /** Repaints a mounted Raster when its frame has moved on, without a render pass. */
 async function animate($: EngineInterface, requestId: string, set: SpriteSet, pose: Pose, now: number): Promise<void> {
-  const frame = frameAt(set, pose, now)
+  const frame = advanceAnim(requestId, set, pose, now)
   if (lastBlit.get(requestId) === frame) return
   lastBlit.set(requestId, frame)
   try {
@@ -378,8 +381,15 @@ async function animate($: EngineInterface, requestId: string, set: SpriteSet, po
   }
 }
 
+/** Moves this drawing's animation towards `pose` and returns the frame to show now. */
+function advanceAnim(requestId: string, set: SpriteSet, pose: Pose, now: number): string {
+  const r = frameOf(anims.get(requestId) ?? startAnim(pose, now), set, pose, now)
+  anims.set(requestId, r.anim)
+  return r.frame
+}
+
 function drawn(requestId: string, set: SpriteSet, pose: Pose, now: number) {
-  const frame = frameAt(set, pose, now)
+  const frame = advanceAnim(requestId, set, pose, now)
   lastBlit.set(requestId, frame)
   return cellsOf(frame, set.width, set.height, PALETTE)
 }

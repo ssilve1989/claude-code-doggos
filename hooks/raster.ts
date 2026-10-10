@@ -3,10 +3,16 @@
 
 import type { Pose } from '../types'
 
+export type Stance = 'sit' | 'stand' | 'lie'
+
 export type SpriteSet = {
   width: number
   height: number
   poses: Record<Pose, readonly string[]>
+  /** Poses in one stance share a body, so switching between them needs no in-between frames. */
+  stances: Record<Pose, Stance>
+  /** In-between frames for a stance change, keyed `from-to` (e.g. `stand-sit`). */
+  clips: Partial<Record<string, readonly string[]>>
 }
 export type Sprites = { big: SpriteSet; mini: SpriteSet }
 
@@ -39,14 +45,7 @@ export function cellsOf(frame: string, width: number, height: number, palette: r
   return { columns: width, rows, cells: new Uint8Array(words.buffer).toBase64() }
 }
 
-/** The frame of a pose to show at `now`, each pose cycling at its own pace. */
-export function frameAt(set: SpriteSet, pose: Pose, now: number): string {
-  const frames = set.poses[pose]
-  const i = Math.floor(now / FRAME_MS[pose]) % frames.length
-  return frames[i] ?? frames[0] ?? ''
-}
-
-const FRAME_MS: Record<Pose, number> = {
+export const FRAME_MS: Record<Pose, number> = {
   idle: 700, excited: 200, happy: 180, worried: 900, tilt: 900,
   sleep: 1200, sniff: 400, dig: 220, walk: 260, leash: 500, yawn: 1500,
 }

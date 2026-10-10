@@ -186,7 +186,7 @@ def side(head_y=7, head_x=32, tail=0, step=0, paw=0):
     return k.done()
 
 
-def lying(tail=0, breath=0):
+def lying(tail=0, breath=0, head_y=27, eyes="closed", mouth="none", ears="droop"):
     """Asleep: lying down facing us, head on paws, eyes closed."""
     k = Canvas(BIG)
     c = 24
@@ -200,11 +200,43 @@ def lying(tail=0, breath=0):
     k.e(c, 28 - breath, 10, 2, 3)
     k.rect(c-8, 32, c-2, 35, 3); k.rect(c+2, 32, c+8, 35, 3)
     k.rect(c-9, 34, c-2, 35, 4); k.rect(c+2, 34, c+9, 35, 4)
-    head_front(k, c, 27, "closed", "none", "droop")
+    head_front(k, c, head_y, eyes, mouth, ears)
     return k.done()
 
 
 # --------------------------------------------------------------------- mini
+
+def sit_side(tail=0):
+    """Sitting in side view, facing right: the bridge between standing and the front sit."""
+    k = Canvas(BIG)
+    if tail == 0:
+        k.poly([(10,27),(6,25),(3,21),(2,16),(4,17),(6,21),(11,24)], 2)
+        k.poly([(2,16),(1,19),(2,23),(5,26),(9,28),(5,24),(3,20)], 4)
+    else:
+        k.poly([(10,28),(5,28),(1,27),(0,25),(4,25),(11,25)], 2)
+        k.poly([(0,26),(1,29),(5,30),(9,30),(5,28)], 4)
+    k.poly([(23,11),(16,17),(11,23),(9,30),(28,31),(30,18),(28,12)], 2)
+    k.e(14, 26, 6, 5, 2)
+    k.d.arc((8, 21, 20, 31), 210, 320, fill=5)
+    k.rect(24, 22, 26, 31, 2); k.rect(28, 20, 30, 31, 3)
+    k.line(27, 22, 27, 31, 5)
+    k.rect(23, 31, 26, 32, 3); k.rect(28, 31, 31, 32, 4)
+    k.rect(10, 31, 17, 32, 3)
+    k.poly([(27,13),(32,15),(32,19),(31,22),(29,21),(30,24),(28,23),(27,19)], 4)
+    head_side(k, 29, 8)
+    return k.done()
+
+
+def big_stances():
+    return {p: ("lie" if p == "sleep" else "stand" if p in ("sniff", "dig", "walk") else "sit") for p in POSES}
+
+
+def big_clips():
+    # shortcut: the turn from side to front uses a tilted-head front sit instead of a true 3/4 view
+    stand_sit = [side(), sit_side(), front(tilt=1, mouth="none")]
+    crouch = lying(head_y=22, eyes="open", mouth="tongue", ears="down")
+    return {"stand-sit": stand_sit, "sit-stand": stand_sit[::-1], "sit-lie": [crouch], "lie-sit": [crouch]}
+
 
 def mini(eyes="open", mouth="tongue", ears="down", dy=0, tilt=0, paws=0):
     """Head and shoulders, facing us: 16x12 pixels, 6 terminal rows."""
@@ -318,8 +350,11 @@ def main():
     for poses in (big, small):
         assert list(poses) == POSES, "every size draws every pose"
     sprites = {
-        "big": {"width": BIG[0], "height": BIG[1], "poses": {p: encode(f, BIG) for p, f in big.items()}},
-        "mini": {"width": MINI[0], "height": MINI[1], "poses": {p: encode(f, MINI) for p, f in small.items()}},
+        "big": {"width": BIG[0], "height": BIG[1], "poses": {p: encode(f, BIG) for p, f in big.items()},
+                "stances": big_stances(), "clips": {k: encode(f, BIG) for k, f in big_clips().items()}},
+        # the mini dog is always facing us, so every pose shares one stance
+        "mini": {"width": MINI[0], "height": MINI[1], "poses": {p: encode(f, MINI) for p, f in small.items()},
+                 "stances": {p: "sit" for p in POSES}, "clips": {}},
     }
     palette = [0x01000000 if c is None else c for c in PALETTE]
     ts = (

@@ -191,14 +191,13 @@ test('a late-night prompt gets a yawn, once an hour', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: 'ooh, a job!' })).toBeDefined()
 })
 
-test('ninety minutes of steady work brings the leash', async ($, on) => {
+test('a long enough work streak brings the leash', { options: { breakAfterMinutes: 1 } }, async ($, on) => {
   const { clock } = engine(on)
   await $.session.start(START)
   const ui = await $.ui.mount({ ...band(), surface: 'terminal' })
-  for (let i = 0; i < 9; i++) {
-    await $.prompt.submit(prompt('keep going'))
-    await clock.advance(10 * 60_000)
-  }
-  // the ninth advance ends at 90 minutes, where the reminder is due
-  expect(await ui.find({ type: 'Text', text: "walk? you've been at it 1h30" })).toBeDefined()
+  await $.prompt.submit(prompt('keep going'))
+  await clock.advance(30_000)
+  await $.prompt.submit(prompt('keep going'))
+  await clock.advance(30_000)
+  expect(await ui.find({ type: 'Text', text: "walk? you've been at it 1m" })).toBeDefined()
 })
