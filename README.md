@@ -20,40 +20,60 @@ Mods are code that runs with your permissions inside Claude Code. Read
 
 ## Install
 
-Clone or copy this folder somewhere permanent first. Both options below read
-the plugin from that folder, so moving or deleting it stops the dog loading.
+### From GitHub (recommended)
 
-### Option A: try it for one session
+At the Claude Code prompt:
+
+```
+/plugin install doggo --marketplace ssilve1989/claude-code-doggos
+```
+
+Answer `y` to add the marketplace, then pick a scope (user scope loads it in
+every project). Or from your shell:
+
+```sh
+claude plugin marketplace add ssilve1989/claude-code-doggos
+claude plugin install doggo@doggos
+```
+
+If a session is already open, run `/reload-plugins` there.
+
+To get a newer version later:
+
+```sh
+claude plugin update doggo@doggos
+```
+
+then `/reload-plugins` in any open session.
+
+### From a local clone (for development)
+
+Clone the repo somewhere permanent. Both options below read the plugin from
+that folder, so moving or deleting it stops the dog loading.
+
+```sh
+git clone git@github.com:ssilve1989/claude-code-doggos.git ~/dev/claude-mods/doggos
+```
+
+**Try it for one session.** Nothing is installed, and the session hot-reloads
+the mod whenever you save a file in the folder:
 
 ```sh
 claude --plugin-dir ~/dev/claude-mods/doggos
 ```
 
-Nothing is installed. The session hot-reloads the mod whenever you save a file
-in the folder, which makes this the best mode for working on it.
-
-### Option B: install it for every session
-
-The repo is its own local marketplace (`.claude-plugin/marketplace.json`).
-Add it, then install from it:
+**Install it for every session.** The repo is its own marketplace
+(`.claude-plugin/marketplace.json`), so it can be added as a local one:
 
 ```sh
 claude plugin marketplace add ~/dev/claude-mods/doggos
 claude plugin install doggo@doggos
 ```
 
-Or from inside a session, giving the folder's full path:
-
-```
-/plugin install doggo --marketplace /Users/<you>/dev/claude-mods/doggos
-```
-
-Answer `y` to add the marketplace and pick a scope (user scope loads it in
-every project). If a session is already open, run `/reload-plugins` there.
-
-Because the marketplace is a local folder, the installed mod reads your
+Because that marketplace is a local folder, the installed mod reads your
 folder directly. After editing the code, run `/reload-plugins`; no reinstall
-or version bump is needed.
+or version bump is needed. Use either the GitHub or the local marketplace, not
+both: they share the name `doggos`.
 
 ### Check that it loaded
 
@@ -133,6 +153,10 @@ python3 art/build.py      # redraw sprites -> hooks/sprites.ts and art/preview.p
 `hooks/register.tsx` wires them to Claude Code's events. `hooks/sprites.ts` is
 generated, so edit `art/build.py` instead. Design notes are in
 `docs/superpowers/specs/`.
+
+**Releasing:** bump `version` in `.claude-plugin/plugin.json` before pushing.
+Claude Code caches GitHub installs by version, so `claude plugin update`
+only picks up a change when the version moves.
 
 ## License
 
