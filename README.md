@@ -143,6 +143,7 @@ start a session with `--safe-mode`.
 ## Development
 
 ```sh
+pnpm install              # dev tooling only: commit hooks (the mod needs no install)
 claude plugin test        # unit + integration tests, no session needed
 claude plugin validate .  # what Claude Code reads from the mod
 tsc -p .                  # type-check (types land in .claude-plugin/types/ once the mod has loaded)
@@ -154,9 +155,18 @@ python3 art/build.py      # redraw sprites -> hooks/sprites.ts and art/preview.p
 generated, so edit `art/build.py` instead. Design notes are in
 `docs/superpowers/specs/`.
 
-**Releasing:** bump `version` in `.claude-plugin/plugin.json` before pushing.
-Claude Code caches GitHub installs by version, so `claude plugin update`
-only picks up a change when the version moves.
+### Commits and releases
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
+(`feat:`, `fix:`, `docs:`, `chore:`…). `pnpm install` sets up a `commit-msg`
+hook that rejects anything else, and CI lints every commit in a pull request.
+
+Releases are automated by [release-please](https://github.com/googleapis/release-please):
+each push to `main` updates a release PR with the next version, the
+`CHANGELOG.md` entry and the version in `.claude-plugin/plugin.json`. Merging
+that PR tags the release, and `claude plugin update doggo@doggos` then picks
+it up. While the version is below 1.0, `feat` bumps the minor version and
+`fix` the patch.
 
 ## License
 
